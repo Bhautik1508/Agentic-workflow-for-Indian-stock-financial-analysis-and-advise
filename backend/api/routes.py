@@ -43,8 +43,20 @@ async def analyze_stock(company_name: str):
 @router.get("/search/{query}")
 async def search_companies(query: str):
     """Autocomplete endpoint for company name search"""
-    # Placeholder search, can be expanded to actively query yfinance tickers
-    return {"results": [{"name": query, "ticker": f"{query.upper()}.NS"}]}
+    from yahooquery import search
+    try:
+        results = search(query)
+        valid_results = []
+        if results and "quotes" in results:
+            for r in results["quotes"]:
+                if r.get("exchange") in ["NSI", "BSI", "NSE", "BSE", "NMS"] and r.get("quoteType") == "EQUITY":
+                    valid_results.append({
+                        "name": r.get("longname", r.get("shortname", r.get("symbol"))),
+                        "ticker": r.get("symbol")
+                    })
+        return {"results": valid_results[:5]}
+    except Exception as e:
+        return {"results": []}
 
 @router.get("/health")
 async def health():

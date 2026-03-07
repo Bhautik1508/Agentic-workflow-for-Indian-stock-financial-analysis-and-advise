@@ -10,15 +10,32 @@ export default function SearchBar() {
     const { query, setQuery, results, isLoading } = useStockSearch();
     const [isFocused, setIsFocused] = useState(false);
     const router = useRouter();
+    const [searchError, setSearchError] = useState('');
 
     const handleSelect = (ticker: string) => {
+        setSearchError('');
         // Navigate to the analysis page for this ticker
         router.push(`/analyze/${encodeURIComponent(ticker.replace('.NS', ''))}`);
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' && query.trim()) {
-            handleSelect(query);
+            setSearchError('');
+            try {
+                const res = await fetch(`http://localhost:8000/api/search/${encodeURIComponent(query)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.results && data.results.length > 0) {
+                        handleSelect(data.results[0].ticker);
+                    } else {
+                        setSearchError('Invalid stock symbol. Please enter a valid Indian stock.');
+                    }
+                } else {
+                    setSearchError('Error analyzing symbol. Please try again.');
+                }
+            } catch {
+                setSearchError('Network error checking symbol.');
+            }
         }
     };
 
@@ -56,6 +73,16 @@ export default function SearchBar() {
                 </div>
             </motion.div>
 
+            {searchError && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute top-full mt-2 w-full text-center text-danger text-sm font-medium"
+                >
+                    {searchError}
+                </motion.div>
+            )}
+
             <AnimatePresence>
                 {isFocused && query && results.length > 0 && (
                     <motion.div
@@ -68,7 +95,11 @@ export default function SearchBar() {
                         {results.map((result, idx) => (
                             <div
                                 key={result.ticker + idx}
-                                onClick={() => handleSelect(result.name)}
+                                onMouseDown={(e) => {
+                                    // Use onMouseDown instead of onClick to prevent onBlur from firing first
+                                    e.preventDefault();
+                                    handleSelect(result.ticker);
+                                }}
                                 className="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-white/5 transition-colors group"
                             >
                                 <div>

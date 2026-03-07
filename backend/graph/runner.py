@@ -33,19 +33,16 @@ async def run_stock_analysis(company_name: str):
     tech_data = await fetch_technical_data(ticker, hist_df)
     
     yield {"event": "status", "data": "Scraping Sentiment, News & FII/DII datastreams..."}
-    news_data, gdelt_data, fii_dii = await asyncio.gather(
-        fetch_news(company_name, ticker),
-        asyncio.to_thread(fetch_gdelt_sentiment, company_name),
-        asyncio.to_thread(fetch_fii_dii_data)
-    )
+    news_data = await fetch_news(company_name, ticker)
+    gdelt_data = await asyncio.to_thread(fetch_gdelt_sentiment, company_name)
+    fii_dii = await asyncio.to_thread(fetch_fii_dii_data)
     
     yield {"event": "status", "data": "Fetching Macroeconomic & Governance context..."}
     nse_risk = await fetch_nse_risk_signals(ticker.split('.')[0])
     bse_code = "500325" # Mocking BSE code mapping for now
-    gov_data, insider_data = await asyncio.gather(
-        fetch_bse_governance(bse_code),
-        fetch_nse_insider_trading(ticker.split('.')[0])
-    )
+    
+    gov_data = await fetch_bse_governance(bse_code)
+    insider_data = await fetch_nse_insider_trading(ticker.split('.')[0])
     
     macro_data = {
         **fetch_world_bank_macro(),
