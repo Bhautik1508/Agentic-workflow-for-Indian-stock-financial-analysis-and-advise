@@ -10,7 +10,7 @@ export interface AgentReport {
     key_findings: string[];
     risk_flags: string[];
     confidence: number;
-    data: any;
+    data: unknown;
 }
 
 export interface FinalDecision {
@@ -37,8 +37,6 @@ export function useSSE(ticker: string | null) {
 
     useEffect(() => {
         if (!ticker) return;
-
-        setState(prev => ({ ...prev, status: 'initializing', message: 'Connecting to analysts...' }));
 
         // Connect to FastAPI SSE endpoint
         const eventSource = new EventSource(`http://127.0.0.1:8000/api/analyze/${ticker}`);
@@ -103,14 +101,14 @@ export function useSSE(ticker: string | null) {
                 const messageEvent = e as MessageEvent;
                 const data = JSON.parse(messageEvent.data);
                 errorMessage = data.detail || errorMessage;
-            } catch (parseErr) { }
+            } catch { }
 
             setState(prev => ({ ...prev, status: 'error', message: errorMessage }));
             eventSource.close();
         });
 
         // Handle generic unhandled SSE errors (e.g., connection reset)
-        eventSource.onerror = (e) => {
+        eventSource.onerror = () => {
             setState(prev => ({ ...prev, status: 'error', message: 'SSE Connection Lost' }));
             eventSource.close();
         };

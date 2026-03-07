@@ -75,7 +75,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                                 <AgentCard
                                     key={nodeName}
                                     nodeName={nodeName}
-                                    report={report as any}
+                                    report={report}
                                     isRunning={isRunning}
                                 />
                             );
@@ -88,7 +88,13 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                     <div className="sticky top-8">
                         <h2 className="text-sm font-mono tracking-widest text-foreground/40 uppercase mb-4">Final Verdict</h2>
 
-                        {!state.final_decision ? (
+                        {state.status === 'error' ? (
+                            <div className="rounded-2xl border border-danger/50 bg-danger/10 p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
+                                <TrendingDown size={32} className="text-danger mb-4" />
+                                <h3 className="text-lg font-bold text-danger mb-2">Analysis Failed</h3>
+                                <p className="text-sm text-foreground/70">{state.message}</p>
+                            </div>
+                        ) : !state.final_decision ? (
                             <div className="rounded-2xl border border-border/50 bg-surface/30 p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
                                 <Loader2 size={32} className="text-primary/40 animate-spin mb-4" />
                                 <p className="text-sm text-foreground/50">Awaiting consensus from specialist analysts.</p>
