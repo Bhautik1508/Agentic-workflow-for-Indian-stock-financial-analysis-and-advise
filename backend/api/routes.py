@@ -96,12 +96,17 @@ async def search_companies(query: str):
         valid_results = []
         if results and "quotes" in results:
             for r in results["quotes"]:
-                if r.get("exchange") in ["NSI", "BSI", "NSE", "BSE", "NMS"] and r.get("quoteType") == "EQUITY":
+                exchange = r.get("exchange", "")
+                if exchange in ["NSI", "BSI", "NSE", "BSE", "NMS"] and r.get("quoteType") == "EQUITY":
+                    # Map exchange codes to display labels
+                    exchange_label = "NSE" if exchange in ["NSI", "NSE", "NMS"] else "BSE"
                     valid_results.append({
                         "name": r.get("longname", r.get("shortname", r.get("symbol"))),
-                        "ticker": r.get("symbol")
+                        "ticker": r.get("symbol"),
+                        "exchange": exchange_label,
+                        "sector": r.get("sector", r.get("industry", "")),
                     })
-        return {"results": valid_results[:5]}
+        return {"results": valid_results[:6]}
     except Exception as e:
         return {"results": []}
 
