@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
 import { VerdictPanel } from '@/components/VerdictPanel';
 import { AnalystRadar } from '@/components/RadarChart';
+import { StockChart } from '@/components/StockChart';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
@@ -145,6 +146,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
 
                             {/* Radar chart — shows after all agents complete */}
                             <AnalystRadar agents={state.agents} />
+
+                            {/* Price chart */}
+                            <StockChart ticker={decodedName} />
                         </div>
                     </div>
 
