@@ -212,28 +212,84 @@ import requests
 from bs4 import BeautifulSoup
 
 def scrape_screener(company_slug: str) -> dict:
-    """Scrape 10-year financials from Screener.in"""
+    """
+    Scrapes Screener.in for 10-year financial data.
+    company_slug: uppercase NSE symbol, e.g., 'RELIANCE', 'TCS'
+    """
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://www.screener.in/",
             "Accept": "text/html,application/xhtml+xml",
-            "Referer": "https://www.screener.in/"
         }
-        url = f"https://www.screener.in/company/{company_slug}/consolidated/"
-        resp = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
         
+        # Try consolidated first, then standalone
+        url = f"https://www.screener.in/company/{company_slug}/consolidated/"
+        resp = requests.get(url, headers=headers, timeout=20)
+        
+        if resp.status_code != 200:
+            url = f"https://www.screener.in/company/{company_slug}/"
+            resp = requests.get(url, headers=headers, timeout=20)
+        
+        if resp.status_code != 200:
+            return {}
+        
+        soup = BeautifulSoup(resp.text, "html.parser")
         result = {}
-        for table_id in ["profit-loss", "balance-sheet", "cash-flow", "ratios"]:
-            table = soup.find("section", {"id": table_id})
+        
+        # Extract company overview ratios (Market Cap, P/E, ROCE, etc.)
+        ratios_section = soup.find("section", {"id": "top-ratios"})
+        if ratios_section:
+            for li in ratios_section.find_all("li"):
+                name_el = li.find("span", {"class": "name"})
+                value_el = li.find("span", {"class": "nowrap"})
+                if name_el and value_el:
+                    result[name_el.text.strip()] = value_el.text.strip()
+        
+        # Extract 10-year P&L summary (Revenue, Net Profit, EPS)
+        pl_section = soup.find("section", {"id": "profit-loss"})
+        if pl_section:
+            table = pl_section.find("table")
             if table:
                 rows = table.find_all("tr")
-                for row in rows:
-                    cells = row.find_all("td")
-                    if len(cells) > 1:
-                        label = row.find("td").text.strip()
-                        values = [c.text.strip() for c in cells[1:]]
-                        result[label] = values
+                if rows:
+                    years = [th.text.strip() for th in rows[0].find_all("th")][1:]
+                    for row in rows[1:6]:  # First 5 rows of P&L
+                        cells = row.find_all("td")
+                        if cells:
+                            key = cells[0].text.strip()
+                            values = [c.text.strip() for c in cells[1:]]
+                            result[f"pl_{key}"] = dict(zip(years, values))
+        
+        # Extract key ratios: ROCE, ROE trend
+        ratios_table_section = soup.find("section", {"id": "ratios"})
+        if ratios_table_section:
+            table = ratios_table_section.find("table")
+            if table:
+                rows = table.find_all("tr")
+                if rows:
+                    years = [th.text.strip() for th in rows[0].find_all("th")][1:]
+                    for row in rows[1:]:
+                        cells = row.find_all("td")
+                        if cells:
+                            key = cells[0].text.strip()
+                            values = [c.text.strip() for c in cells[1:]]
+                            result[f"ratio_{key}"] = dict(zip(years, values))
+        
+        # Extract balance sheet summary
+        bs_section = soup.find("section", {"id": "balance-sheet"})
+        if bs_section:
+            table = bs_section.find("table")
+            if table:
+                rows = table.find_all("tr")
+                if rows:
+                    years = [th.text.strip() for th in rows[0].find_all("th")][1:]
+                    for row in rows[1:6]:
+                        cells = row.find_all("td")
+                        if cells:
+                            key = cells[0].text.strip()
+                            values = [c.text.strip() for c in cells[1:]]
+                            result[f"bs_{key}"] = dict(zip(years, values))
         
         return result
     except Exception as e:
