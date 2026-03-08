@@ -244,8 +244,13 @@ async def fetch_nse_risk_signals(symbol: str) -> dict:
     """Scrapes NSE for delivery %, circuit filter, bulk/block deal data"""
     try:
         session = requests.Session()
-        session.get("https://www.nseindia.com", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.nseindia.com/"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.nseindia.com/",
+        }
+        session.get("https://www.nseindia.com", headers=headers, timeout=10)
         
         # Delivery % (last 5 days) — high delivery = genuine buying, low = speculative
         deliv_url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}&section=trade_info"
@@ -260,13 +265,14 @@ async def fetch_nse_risk_signals(symbol: str) -> dict:
 
         return {
             "delivery_pct_today": deliv.get("tradeInfo", {}).get("deliveryToTradedQuantity"),
+            "total_traded_value": deliv.get("tradeInfo", {}).get("totalTradedValue"),
             "circuit_limit": deliv.get("priceInfo", {}).get("pPriceBand"),
             "bulk_deals_30d": company_bulk[:5],
             "surveillance_flag": deliv.get("securityInfo", {}).get("surveillance"),
         }
     except Exception as e:
         print(f"ℹ️ NSE Risk Signals blocked for {symbol}. Using fallback.")
-        return {"delivery_pct_today": None, "circuit_limit": "20"}
+        return {"delivery_pct_today": None, "circuit_limit": "20", "total_traded_value": None, "surveillance_flag": None}
 
 async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.DataFrame) -> dict:
     """Computes advanced risk metrics using the offline `ta` library and Pandas logic."""

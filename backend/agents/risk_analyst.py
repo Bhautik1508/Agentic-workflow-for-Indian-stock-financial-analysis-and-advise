@@ -59,9 +59,18 @@ Free Cash Flow:              ₹{free_cashflow_cr} Crore
 
 ━━━ NSE SIGNALS ━━━
 Delivery % Today:            {delivery_pct_today}%
-  → (>50% = genuine buying; <30% = speculative/day-trading)
+  → Interpretation:          {delivery_interpretation}
+     (>60% = strong genuine buying, institutional accumulation)
+     (40–60% = normal retail + institutional mix)
+     (20–40% = speculative / day-trading dominated)
+     (<20% = highly speculative, momentum driven, AVOID)
+Total Traded Value:          ₹{total_traded_value_cr} Crore
 Circuit Limit:               {circuit_limit}
+  → Narrow circuit (5% or 10%) = HIGH liquidity risk, potential operator stock
+  → Wide circuit (20%) = standard large-cap
+  → No circuit = index stock (lowest liquidity risk)
 Surveillance Flag:           {surveillance_flag}
+  → ASM/GSM = SEBI has flagged this stock — mandatory risk flag
 
 ━━━ SECTOR CONTEXT ━━━
 Sector:     {sector}
@@ -114,6 +123,32 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         elif b < 0.8: b_interp = "defensive (lower volatility)"
         else: b_interp = "market-like (tracks broader index)"
 
+    # Compute delivery interpretation label in Python
+    delivery_pct = nse.get("delivery_pct_today")
+    delivery_interpretation = "N/A (data unavailable)"
+    if delivery_pct is not None:
+        try:
+            dp = float(delivery_pct)
+            if dp > 60:
+                delivery_interpretation = "Strong genuine buying — institutional accumulation"
+            elif dp >= 40:
+                delivery_interpretation = "Normal retail + institutional mix"
+            elif dp >= 20:
+                delivery_interpretation = "Speculative / day-trading dominated"
+            else:
+                delivery_interpretation = "HIGHLY SPECULATIVE — momentum driven, AVOID"
+        except:
+            delivery_interpretation = "N/A (parse error)"
+
+    # Compute total traded value in Crore
+    ttv = nse.get("total_traded_value")
+    total_traded_value_cr = "N/A"
+    if ttv is not None:
+        try:
+            total_traded_value_cr = format_metric(float(ttv) / 1e7)
+        except:
+            pass
+
     prompt = RISK_USER_PROMPT.format(
         company_name=state["company_name"],
         ticker=state["ticker"],
@@ -137,7 +172,9 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         sector=fundamental.get("sector", "Unknown"),
         industry=fundamental.get("industry", "Unknown"),
         market_cap_cr=format_metric((price.get("market_cap") or 0) / 10000000),
-        delivery_pct_today=format_metric(nse.get("delivery_pct_today", "N/A")),
+        delivery_pct_today=format_metric(delivery_pct),
+        delivery_interpretation=delivery_interpretation,
+        total_traded_value_cr=total_traded_value_cr,
         circuit_limit=nse.get("circuit_limit", "20%"),
         surveillance_flag=nse.get("surveillance_flag", "None")
     )
