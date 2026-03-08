@@ -371,6 +371,12 @@ async def fetch_technical_data(ticker: str, hist_df: pd.DataFrame) -> dict:
 
         # ── Volatility
         bb = ta.volatility.BollingerBands(c, window=20, window_dev=2)
+        bb_width_series = bb.bollinger_wband()
+        bb_width_52w_high = bb_width_series.tail(252).max() if len(bb_width_series) > 0 else 1
+        bb_width_52w_low = bb_width_series.tail(252).min() if len(bb_width_series) > 0 else 0
+        current_bb_width = last(bb_width_series) or 0
+        bb_width_pctile = ((current_bb_width - bb_width_52w_low) / (bb_width_52w_high - bb_width_52w_low + 1e-9)) * 100
+
         atr_14 = ta.volatility.AverageTrueRange(h, l, c, window=14).average_true_range()
 
         # ── Volume
@@ -402,6 +408,7 @@ async def fetch_technical_data(ticker: str, hist_df: pd.DataFrame) -> dict:
             "macd": last(macd_ind.macd()),
             "macd_signal": last(macd_ind.macd_signal()),
             "macd_histogram": last(macd_ind.macd_diff()),
+            "macd_histogram_prev": round(float(macd_ind.macd_diff().iloc[-2]), 4) if len(macd_ind.macd_diff()) > 1 and not pd.isna(macd_ind.macd_diff().iloc[-2]) else None,
             "macd_crossover": "bullish" if (last(macd_ind.macd_diff()) or 0) > 0 else "bearish",
             "adx": last(adx_ind.adx()),
             "adx_plus_di": last(adx_ind.adx_pos()),
@@ -426,7 +433,8 @@ async def fetch_technical_data(ticker: str, hist_df: pd.DataFrame) -> dict:
             "bb_middle": last(bb.bollinger_mavg()),
             "bb_lower": last(bb.bollinger_lband()),
             "bb_pct_b": last(bb.bollinger_pband()),
-            "bb_width": last(bb.bollinger_wband()),
+            "bb_width": current_bb_width,
+            "bb_width_pctile": round(bb_width_pctile, 2),
             "bb_position": (
                 "above_upper" if cp and last(bb.bollinger_hband()) and cp > last(bb.bollinger_hband())
                 else "below_lower" if cp and last(bb.bollinger_lband()) and cp < last(bb.bollinger_lband())
