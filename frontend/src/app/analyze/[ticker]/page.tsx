@@ -4,158 +4,151 @@ import { useSSE } from '@/hooks/useSSE';
 import { use } from 'react';
 import { motion } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
-import { Loader2, ArrowLeft, Target, TrendingDown, BookOpen } from 'lucide-react';
+import { VerdictPanel } from '@/components/VerdictPanel';
+import { AnalystRadar } from '@/components/RadarChart';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 
-function cn(...inputs: ClassValue[]) {
-    return twMerge(clsx(inputs));
-}
+const NODE_NAMES = [
+    'financial_node',
+    'technical_node',
+    'sentiment_node',
+    'risk_node',
+    'macro_governance_node',
+];
 
 export default function AnalyzePage({ params }: { params: Promise<{ ticker: string }> }) {
     const unwrappedParams = use(params);
     const ticker = unwrappedParams.ticker;
     const state = useSSE(ticker);
 
-    const NODE_NAMES = [
-        'financial_node',
-        'sentiment_node',
-        'risk_node',
-        'technical_node',
-        'macro_governance_node'
-    ];
-
-    const getDecisionColor = (decision: string) => {
-        switch (decision) {
-            case 'BUY': return 'text-success bg-success/10 border-success/30';
-            case 'SELL': return 'text-danger bg-danger/10 border-danger/30';
-            default: return 'text-warning bg-warning/10 border-warning/30';
-        }
-    };
+    const decodedName = decodeURIComponent(ticker);
+    const completedCount = Object.keys(state.agents).length;
+    const totalAgents = NODE_NAMES.length;
+    const isAnalyzing = state.status === 'analyzing';
+    const isComplete = state.status === 'complete';
 
     return (
-        <div className="w-full max-w-6xl mx-auto px-4 py-8 pb-32">
-            <div className="mb-8 flex items-center justify-between">
-                <Link href="/" className="inline-flex items-center text-sm font-medium text-foreground/50 hover:text-primary transition-colors">
-                    <ArrowLeft size={16} className="mr-2" /> Back to Search
-                </Link>
-                <div className="flex items-center gap-3">
-                    <span className="text-xs uppercase tracking-widest font-mono text-foreground/40 border border-border px-3 py-1 rounded-full">
-                        {state.status === 'error' ? 'SYSTEM ERROR' : state.status === 'complete' ? 'ANALYSIS COMPLETE' : 'LIVE FEED'}
-                    </span>
-                    {state.status !== 'complete' && state.status !== 'error' && (
-                        <div className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-                    )}
-                </div>
-            </div>
+        <div className="w-full min-h-screen relative z-10">
+            {/* Sticky Top Bar */}
+            <div className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-xl border-b border-border/40">
+                <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <Link
+                            href="/"
+                            className="text-text-dim hover:text-primary transition-colors"
+                        >
+                            <ArrowLeft size={18} />
+                        </Link>
 
-            <header className="mb-12 border-b border-border/50 pb-8 relative">
-                <h1 className="text-4xl md:text-5xl font-bold tracking-tight uppercase">
-                    {decodeURIComponent(ticker)}
-                </h1>
-                <p className="mt-3 text-lg text-foreground/60 max-w-2xl font-mono">
-                    {state.message || "Initializing deployment sequence..."}
-                </p>
-            </header>
-
-            {/* Main Grid Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-
-                {/* Left Column: Flow of Agents */}
-                <div className="lg:col-span-8 flex flex-col gap-6">
-                    <h2 className="text-sm font-mono tracking-widest text-foreground/40 uppercase mb-2">Agent Swarm Activity</h2>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {NODE_NAMES.map(nodeName => {
-                            const report = state.agents[nodeName];
-                            const isRunning = state.status === 'analyzing' && !report && Object.keys(state.agents).length < NODE_NAMES.length;
-
-                            return (
-                                <AgentCard
-                                    key={nodeName}
-                                    nodeName={nodeName}
-                                    report={report}
-                                    isRunning={isRunning}
-                                />
-                            );
-                        })}
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-lg font-bold tracking-tight">{decodedName}</h1>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                                NSE
+                            </span>
+                        </div>
                     </div>
-                </div>
 
-                {/* Right Column: Final Synthesizer */}
-                <div className="lg:col-span-4">
-                    <div className="sticky top-8">
-                        <h2 className="text-sm font-mono tracking-widest text-foreground/40 uppercase mb-4">Final Verdict</h2>
+                    <div className="flex items-center gap-4">
+                        {/* Status indicator */}
+                        <div className="flex items-center gap-2">
+                            {isAnalyzing && (
+                                <>
+                                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                    <span className="text-xs font-mono text-primary">
+                                        LIVE {completedCount}/{totalAgents}
+                                    </span>
+                                </>
+                            )}
+                            {isComplete && (
+                                <span className="text-xs font-mono text-success">
+                                    ✓ COMPLETE
+                                </span>
+                            )}
+                            {state.status === 'error' && (
+                                <span className="text-xs font-mono text-danger">
+                                    ✗ ERROR
+                                </span>
+                            )}
+                        </div>
 
-                        {state.status === 'error' ? (
-                            <div className="rounded-2xl border border-danger/50 bg-danger/10 p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
-                                <TrendingDown size={32} className="text-danger mb-4" />
-                                <h3 className="text-lg font-bold text-danger mb-2">Analysis Failed</h3>
-                                <p className="text-sm text-foreground/70">{state.message}</p>
-                            </div>
-                        ) : !state.final_decision ? (
-                            <div className="rounded-2xl border border-border/50 bg-surface/30 p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
-                                <Loader2 size={32} className="text-primary/40 animate-spin mb-4" />
-                                <p className="text-sm text-foreground/50">Awaiting consensus from specialist analysts.</p>
-                                <p className="text-xs font-mono text-foreground/30 mt-2">The Judge will convene shortly...</p>
-                            </div>
-                        ) : (
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                transition={{ type: "spring", stiffness: 100, damping: 20 }}
-                                className={cn(
-                                    "rounded-2xl border p-6 shadow-2xl relative overflow-hidden",
-                                    state.final_decision.decision === 'BUY' ? "bg-success/5 border-success/20" :
-                                        state.final_decision.decision === 'SELL' ? "bg-danger/5 border-danger/20" :
-                                            "bg-warning/5 border-warning/20"
-                                )}
+                        {/* Timestamp */}
+                        <span className="hidden md:block text-[10px] font-mono text-text-dim">
+                            {new Date().toLocaleString('en-IN', {
+                                day: '2-digit', month: 'short', year: 'numeric',
+                                hour: '2-digit', minute: '2-digit',
+                            })}
+                        </span>
+
+                        {/* Re-analyze button */}
+                        {isComplete && (
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-border hover:border-primary/40 hover:text-primary transition-all cursor-pointer"
                             >
-                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-current to-transparent opacity-20" />
-
-                                <div className="flex flex-col items-center text-center space-y-2 mb-8">
-                                    <p className="text-xs font-mono uppercase tracking-widest text-foreground/40">CIO Judgment</p>
-                                    <h2 className={cn("text-6xl font-black tracking-tighter", getDecisionColor(state.final_decision.decision))}>
-                                        {state.final_decision.decision}
-                                    </h2>
-                                    <div className="inline-flex items-center gap-1 mt-2 text-sm font-medium">
-                                        <Target size={14} className="text-foreground/50" />
-                                        <span>Confidence Score: {state.final_decision.confidence_score.toFixed(1)}/10</span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div>
-                                        <h4 className="text-sm font-semibold flex items-center gap-2 mb-2 text-foreground/80">
-                                            <BookOpen size={16} /> Investment Thesis
-                                        </h4>
-                                        <p className="text-sm text-foreground/70 leading-relaxed bg-black/20 p-4 rounded-lg border border-white/5">
-                                            {state.final_decision.investment_thesis}
-                                        </p>
-                                    </div>
-
-                                    {state.final_decision.key_risks && state.final_decision.key_risks.length > 0 && (
-                                        <div>
-                                            <h4 className="text-sm font-semibold flex items-center gap-2 mb-2 text-danger/80">
-                                                <TrendingDown size={16} /> Critical Drawdowns
-                                            </h4>
-                                            <ul className="space-y-2">
-                                                {state.final_decision.key_risks.map((risk, i) => (
-                                                    <li key={i} className="text-xs text-foreground/60 flex items-start gap-2">
-                                                        <span className="text-danger font-bold mt-0.5">•</span>
-                                                        <span>{risk}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-                            </motion.div>
+                                <RefreshCw size={12} />
+                                Re-analyze
+                            </button>
                         )}
                     </div>
                 </div>
+            </div>
 
+            {/* Main Content */}
+            <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+                    {/* Left Column — Agent Cards Feed (60%) */}
+                    <div className="lg:col-span-3 flex flex-col gap-3">
+                        <h2 className="text-[10px] font-mono tracking-[0.2em] text-text-dim uppercase mb-1">
+                            Agent Analysis Feed
+                        </h2>
+
+                        <div className="flex flex-col gap-3">
+                            {NODE_NAMES.map((nodeName, i) => {
+                                const report = state.agents[nodeName];
+                                const isRunning =
+                                    isAnalyzing &&
+                                    !report &&
+                                    completedCount < totalAgents;
+
+                                return (
+                                    <motion.div
+                                        key={nodeName}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: i * 0.05 }}
+                                    >
+                                        <AgentCard
+                                            nodeName={nodeName}
+                                            report={report}
+                                            isRunning={isRunning}
+                                        />
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Right Column — Verdict + Radar (40%) */}
+                    <div className="lg:col-span-2">
+                        <div className="sticky top-20 flex flex-col gap-4">
+                            <h2 className="text-[10px] font-mono tracking-[0.2em] text-text-dim uppercase mb-1">
+                                Final Verdict
+                            </h2>
+
+                            <VerdictPanel
+                                decision={state.final_decision}
+                                status={state.status}
+                                errorMessage={state.message}
+                            />
+
+                            {/* Radar chart — shows after all agents complete */}
+                            <AnalystRadar agents={state.agents} />
+                        </div>
+                    </div>
+
+                </div>
             </div>
         </div>
     );
