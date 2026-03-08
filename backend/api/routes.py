@@ -110,6 +110,55 @@ async def search_companies(query: str):
     except Exception as e:
         return {"results": []}
 
+@router.get("/price-history/{ticker}")
+async def get_price_history(ticker: str, period: str = "1y"):
+    """Fetch OHLCV price history with SMA overlays for charting."""
+    import yfinance as yf
+    import math
+
+    # Validate period
+    valid_periods = {"1mo", "3mo", "6mo", "1y"}
+    if period not in valid_periods:
+        period = "1y"
+
+    try:
+        # Append .NS if not already suffixed
+        symbol = ticker if "." in ticker else f"{ticker}.NS"
+        stock = yf.Ticker(symbol)
+        hist = stock.history(period=period)
+
+        if hist.empty:
+            raise HTTPException(status_code=404, detail=f"No price data found for {ticker}")
+
+        # Compute SMAs
+        hist["SMA20"] = hist["Close"].rolling(window=20).mean()
+        hist["SMA50"] = hist["Close"].rolling(window=50).mean()
+
+        # Build records
+        records = []
+        for date, row in hist.iterrows():
+            def safe(v):
+                if v is None or (isinstance(v, float) and math.isnan(v)):
+                    return None
+                return round(v, 2)
+
+            records.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "open": safe(row.get("Open")),
+                "high": safe(row.get("High")),
+                "low": safe(row.get("Low")),
+                "close": safe(row.get("Close")),
+                "volume": int(row.get("Volume", 0)),
+                "sma20": safe(row.get("SMA20")),
+                "sma50": safe(row.get("SMA50")),
+            })
+
+        return {"ticker": symbol, "period": period, "data": records}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/health")
 async def health():
     return {"status": "ok", "message": "Backend is running"}
