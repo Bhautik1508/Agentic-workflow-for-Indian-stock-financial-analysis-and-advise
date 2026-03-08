@@ -549,6 +549,44 @@ async def fetch_bse_governance(bse_code: str) -> dict:
             ]
         }
 
+async def fetch_sector_peers(ticker: str, sector: str, max_peers: int = 5) -> list[dict]:
+    """
+    Fetch key metrics for top 5 sector peers for comparison.
+    Use yfinance to get P/E, P/B, ROE for each peer.
+    """
+    if not sector: return []
+    
+    SECTOR_PEERS = {
+        "Technology": ["TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS"],
+        "Financial Services": ["HDFCBANK.NS", "ICICIBANK.NS", "KOTAKBANK.NS", "AXISBANK.NS", "SBIN.NS"],
+        "Consumer Defensive": ["HINDUNILVR.NS", "ITC.NS", "NESTLEIND.NS", "DABUR.NS", "MARICO.NS"],
+        "Healthcare": ["SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "APOLLOHOSP.NS"],
+        "Automobile": ["MARUTI.NS", "TATAMOTORS.NS", "M&M.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS"],
+        "Energy": ["RELIANCE.NS", "ONGC.NS", "NTPC.NS", "POWERGRID.NS", "BPCL.NS"],
+        "Materials": ["JSWSTEEL.NS", "TATASTEEL.NS", "HINDALCO.NS", "ULTRACEMCO.NS", "GRASIM.NS"],
+        "Real Estate": ["DLF.NS", "GODREJPROP.NS", "OBEROIRLTY.NS", "BRIGADE.NS", "PRESTIGE.NS"],
+    }
+    
+    peers = [t for t in SECTOR_PEERS.get(sector, []) if t != ticker][:max_peers]
+    
+    result = []
+    # yf.Ticker is synchronous, wrap in to_thread since this is an async function
+    for peer in peers:
+        try:
+            info = await asyncio.to_thread(lambda p: yf.Ticker(p).info, peer)
+            result.append({
+                "ticker": peer,
+                "pe": info.get("trailingPE"),
+                "pb": info.get("priceToBook"),
+                "roe": info.get("returnOnEquity"),
+                "market_cap_cr": round((info.get("marketCap") or 0) / 1e7, 0) if info.get("marketCap") else None,
+                "revenue_growth": info.get("revenueGrowth"),
+            })
+        except Exception as e:
+            print(f"Failed to fetch peer {peer}: {e}")
+            pass
+    return result
+
 async def fetch_nse_insider_trading(symbol: str) -> list:
     """Returns recent insider buy/sell transactions (SAST/PIT disclosures)"""
     try:
@@ -646,6 +684,10 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
         # Determine exact company slug for Screener.in without .NS
         c_slug = ticker.split(".")[0]
         screener_data = scrape_screener(c_slug)
+        
+        # Fetch sector peers Context
+        derived_sector = ap.get("sector")
+        peer_data = await fetch_sector_peers(ticker, derived_sector)
             
         # Ensure we don't throw an error if data is empty, let LLM handle partials
         result = {
@@ -702,6 +744,7 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
                 "industry": ap.get("industry"),
                 "full_time_employees": ap.get("fullTimeEmployees"),
                 "business_summary": ap.get("longBusinessSummary"),
+                "sector_peers": peer_data,
             },
             "screener_data": screener_data
         }
