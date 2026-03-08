@@ -71,7 +71,13 @@ Ticker | P/E | P/B | ROE | Rev Growth | Market Cap (Cr)
 Sector Median P/E: {sector_median_pe}
 → {company_name} trades at {pe_premium_discount}% {premium_or_discount} to sector median
 
-━━━ SCREENER 10-YEAR DATA ━━━
+━━━ SCREENER.IN 10-YEAR TREND ━━━
+Revenue CAGR (5Y):      {revenue_cagr_5y}
+Profit CAGR (5Y):       {profit_cagr_5y}
+ROCE Trend (Latest):    {roce_latest}
+ROE Trend (Latest):     {roe_latest}
+
+Full Screener Data:
 {screener_data_summary}
 
 ━━━ BUSINESS DESCRIPTION ━━━
@@ -123,6 +129,48 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     
     # Helper string formats
     screener_text = json.dumps(screener, indent=2) if screener else "No Screener data."
+    
+    # Compute CAGR from Screener year-keyed data
+    def compute_cagr(data_row: dict, n_years: int = 5) -> str:
+        """Compute CAGR from a year-keyed dict like {'Mar 2020': '100', 'Mar 2025': '200'}"""
+        if not data_row or not isinstance(data_row, dict):
+            return "N/A"
+        try:
+            keys = sorted(data_row.keys())
+            if len(keys) < 2:
+                return "N/A"
+            # Get the latest and the one n_years ago
+            latest_key = keys[-1]
+            start_idx = max(0, len(keys) - n_years - 1)
+            start_key = keys[start_idx]
+            latest_val = float(data_row[latest_key].replace(',', ''))
+            start_val = float(data_row[start_key].replace(',', ''))
+            if start_val <= 0 or latest_val <= 0:
+                return "N/A"
+            actual_years = len(keys) - 1 - start_idx
+            if actual_years <= 0:
+                return "N/A"
+            cagr = ((latest_val / start_val) ** (1 / actual_years) - 1) * 100
+            return f"{cagr:.1f}%"
+        except:
+            return "N/A"
+    
+    def get_latest_ratio(screener_data: dict, key_prefix: str) -> str:
+        """Get the latest value from a year-keyed screener ratio dict."""
+        for k, v in screener_data.items():
+            if k.startswith(key_prefix) and isinstance(v, dict):
+                keys = sorted(v.keys())
+                if keys:
+                    return v[keys[-1]]
+        return "N/A"
+    
+    # Find Sales/Revenue row and Net Profit row
+    revenue_row = screener.get("pl_Sales", screener.get("pl_Revenue", {}))
+    profit_row = screener.get("pl_Net Profit", screener.get("pl_Profit after tax", {}))
+    revenue_cagr_5y = compute_cagr(revenue_row, 5)
+    profit_cagr_5y = compute_cagr(profit_row, 5)
+    roce_latest = get_latest_ratio(screener, "ratio_ROCE")
+    roe_latest = get_latest_ratio(screener, "ratio_ROE")
     
     # Peer Table & Sector Math
     peers = fundamental.get("sector_peers", [])
@@ -199,6 +247,10 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         sector_median_pe=sector_median_pe,
         pe_premium_discount=pe_premium_discount,
         premium_or_discount=premium_or_discount,
+        revenue_cagr_5y=revenue_cagr_5y,
+        profit_cagr_5y=profit_cagr_5y,
+        roce_latest=roce_latest,
+        roe_latest=roe_latest,
         screener_data_summary=screener_text,
         business_summary=fundamental.get("business_summary", "No description available.")
     )
