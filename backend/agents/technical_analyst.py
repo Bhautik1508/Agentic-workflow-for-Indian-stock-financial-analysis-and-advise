@@ -41,15 +41,12 @@ ADX (Trend Strength): {adx}  → Trend is {trend_strength}
 Trend Direction: {trend_direction}
 
 ━━━ MOMENTUM ━━━
-RSI (14):      {rsi_14}
-  → {rsi_interpretation}
-  (>70=overbought, 50–70=bullish, 30–50=bearish, <30=oversold)
-
+RSI (14):      {rsi_14} → {rsi_interpretation}
 RSI (9):       {rsi_9}
 
 MACD:          {macd}
 MACD Signal:   {macd_signal}
-MACD Histogram:{macd_histogram}  → {macd_crossover} crossover
+MACD Histogram:{macd_histogram}  → {macd_crossover}
 
 Stochastic %K: {stoch_k}   %D: {stoch_d}
 ROC (10):      {roc_10}%
@@ -67,9 +64,7 @@ ATR (14):    ₹{atr_14} → Daily expected range ±₹{atr_14}
 Today's Volume:      {volume_today:,}
 20-Day Avg Volume:   {volume_sma_20:,}
 Volume Ratio:        {volume_ratio}x  → {volume_interpretation}
-  (>1.5x = high conviction move, <0.5x = low interest)
-OBV Trend:           {obv_trend}
-  → {obv_interpretation}
+OBV Trend:           {obv_trend}  → {obv_interpretation}
 
 ━━━ SUPPORT & RESISTANCE ━━━
 52-Week High:        ₹{high_52w}  ({pct_from_52w_high}% from current)
@@ -132,21 +127,31 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
     # Interpretations
     rsi = ta_data.get("rsi_14", 50)
     rsi_interp = "neutral"
-    if rsi > 70: rsi_interp = "overbought"
-    elif rsi < 30: rsi_interp = "oversold"
+    if rsi >= 70: rsi_interp = "oversold" if rsi < 30 else "overbought"
+    elif rsi <= 30: rsi_interp = "oversold"
     elif rsi > 50: rsi_interp = "bullish"
-    elif rsi < 50: rsi_interp = "bearish"
+    elif rsi <= 50: rsi_interp = "bearish"
 
     vol_ratio = ta_data.get("volume_ratio", 1.0)
     vol_interp = "normal volume"
     if vol_ratio > 1.5: vol_interp = "high conviction volume"
     elif vol_ratio < 0.5: vol_interp = "low interest volume"
 
-    bb_width = ta_data.get("bb_width", 0)
-    bb_squeeze = "squeeze (expect breakout)" if bb_width < 5 else "expansion"
+    bb_pctile = ta_data.get("bb_width_pctile", 50)
+    bb_squeeze = "squeeze (bottom 20% of 52w range, expect breakout)" if bb_pctile < 20 else "normal/expansion"
 
     obv_trend = ta_data.get("obv_trend", "neutral")
     obv_interp = "buying pressure" if obv_trend == "rising" else "selling pressure"
+    
+    macd_hist = ta_data.get("macd_histogram") or 0
+    macd_prev = ta_data.get("macd_histogram_prev") or 0
+    macd_crossover = "neutral"
+    if macd_hist > 0 and macd_prev <= 0: macd_crossover = "bullish crossover"
+    elif macd_hist < 0 and macd_prev >= 0: macd_crossover = "bearish crossover"
+    elif macd_hist > 0 and macd_hist > macd_prev: macd_crossover = "bullish momentum expanding"
+    elif macd_hist > 0 and macd_hist < macd_prev: macd_crossover = "bullish momentum fading"
+    elif macd_hist < 0 and macd_hist < macd_prev: macd_crossover = "bearish momentum expanding"
+    elif macd_hist < 0 and macd_hist > macd_prev: macd_crossover = "bearish momentum fading"
 
     fib = ta_data.get("fibonacci_levels", {})
 
@@ -174,7 +179,7 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         macd=format_metric(ta_data.get("macd")),
         macd_signal=format_metric(ta_data.get("macd_signal")),
         macd_histogram=format_metric(ta_data.get("macd_histogram")),
-        macd_crossover=ta_data.get("macd_crossover", "neutral").upper(),
+        macd_crossover=macd_crossover.upper(),
         stoch_k=format_metric(ta_data.get("stoch_k")),
         stoch_d=format_metric(ta_data.get("stoch_d")),
         roc_10=format_metric(ta_data.get("roc_10")),
@@ -183,7 +188,7 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         bb_lower=format_metric(ta_data.get("bb_lower")),
         bb_pct_b=format_metric(ta_data.get("bb_pct_b")),
         bb_pct_b_pct=format_metric((ta_data.get("bb_pct_b") or 0) * 100),
-        bb_width=format_metric(bb_width),
+        bb_width=format_metric(ta_data.get("bb_width")),
         bb_squeeze=bb_squeeze.upper(),
         bb_position=ta_data.get("bb_position", "inside").replace("_", " ").upper(),
         atr_14=format_metric(ta_data.get("atr_14")),
