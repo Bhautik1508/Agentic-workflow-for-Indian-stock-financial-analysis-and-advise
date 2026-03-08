@@ -237,7 +237,7 @@ async def run_sentiment_analysis(state: StockAnalysisState) -> AgentReport:
     stats = compute_news_stats(news, fii)
 
     # Determine large-cap status (Nifty50 market cap threshold ~₹50,000 Cr)
-    market_cap_cr = (info.get("market_cap") or 0) / 1e7
+    market_cap_cr = (price.get("market_cap") or 0) / 1e7
     is_large_cap  = market_cap_cr > 50000
 
     # Determine index membership
