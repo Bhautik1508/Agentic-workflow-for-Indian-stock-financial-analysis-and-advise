@@ -1,5 +1,4 @@
-import json
-from agents.base_agent import get_llm
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 TECHNICAL_SYSTEM_PROMPT = """You are a Chartered Market Technician (CMT) and head of technical research at a leading
@@ -121,126 +120,111 @@ def format_metric(val):
     try: return f"{float(val):.2f}"
     except: return str(val)
 
+@agent_with_fallback("Technical Analyst", default_score=5.0)
 async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
-    try:
-        client = get_llm()
-        
-        ta_data = state.get("technical_data", {})
-        price_data = state.get("price_data", {})
-        
-        c = ta_data.get("current_price", price_data.get("current_price", 0))
-        
-        # Interpretations
-        rsi = ta_data.get("rsi_14", 50)
-        rsi_interp = "neutral"
-        if rsi > 70: rsi_interp = "overbought"
-        elif rsi < 30: rsi_interp = "oversold"
-        elif rsi > 50: rsi_interp = "bullish"
-        elif rsi < 50: rsi_interp = "bearish"
+    client = get_llm()
+    
+    ta_data = state.get("technical_data", {})
+    price_data = state.get("price_data", {})
+    
+    c = ta_data.get("current_price", price_data.get("current_price", 0))
+    
+    # Interpretations
+    rsi = ta_data.get("rsi_14", 50)
+    rsi_interp = "neutral"
+    if rsi > 70: rsi_interp = "overbought"
+    elif rsi < 30: rsi_interp = "oversold"
+    elif rsi > 50: rsi_interp = "bullish"
+    elif rsi < 50: rsi_interp = "bearish"
 
-        vol_ratio = ta_data.get("volume_ratio", 1.0)
-        vol_interp = "normal volume"
-        if vol_ratio > 1.5: vol_interp = "high conviction volume"
-        elif vol_ratio < 0.5: vol_interp = "low interest volume"
+    vol_ratio = ta_data.get("volume_ratio", 1.0)
+    vol_interp = "normal volume"
+    if vol_ratio > 1.5: vol_interp = "high conviction volume"
+    elif vol_ratio < 0.5: vol_interp = "low interest volume"
 
-        bb_width = ta_data.get("bb_width", 0)
-        bb_squeeze = "squeeze (expect breakout)" if bb_width < 5 else "expansion"
+    bb_width = ta_data.get("bb_width", 0)
+    bb_squeeze = "squeeze (expect breakout)" if bb_width < 5 else "expansion"
 
-        obv_trend = ta_data.get("obv_trend", "neutral")
-        obv_interp = "buying pressure" if obv_trend == "rising" else "selling pressure"
+    obv_trend = ta_data.get("obv_trend", "neutral")
+    obv_interp = "buying pressure" if obv_trend == "rising" else "selling pressure"
 
-        fib = ta_data.get("fibonacci_levels", {})
+    fib = ta_data.get("fibonacci_levels", {})
 
-        prompt = TECHNICAL_USER_PROMPT.format(
-            company_name=state["company_name"],
-            ticker=state["ticker"],
-            current_price=format_metric(c),
-            sma_20=format_metric(ta_data.get("sma_20")),
-            above_below_sma20="ABOVE" if ta_data.get("above_sma_20") else "BELOW",
-            sma_50=format_metric(ta_data.get("sma_50")),
-            above_below_sma50="ABOVE" if ta_data.get("above_sma_50") else "BELOW",
-            sma_200=format_metric(ta_data.get("sma_200")),
-            above_below_sma200="ABOVE" if ta_data.get("above_sma_200") else "BELOW",
-            ema_21=format_metric(ta_data.get("ema_21")),
-            ma_trend=ta_data.get("ma_trend", "mixed").replace("_", " ").title(),
-            golden_cross="YES" if ta_data.get("golden_cross") else "NO",
-            adx=format_metric(ta_data.get("adx")),
-            trend_strength=ta_data.get("trend_strength", "weak").upper(),
-            adx_plus_di=format_metric(ta_data.get("adx_plus_di")),
-            adx_minus_di=format_metric(ta_data.get("adx_minus_di")),
-            trend_direction=ta_data.get("trend_direction", "neutral").upper(),
-            rsi_14=format_metric(rsi),
-            rsi_interpretation=rsi_interp.upper(),
-            rsi_9=format_metric(ta_data.get("rsi_9")),
-            macd=format_metric(ta_data.get("macd")),
-            macd_signal=format_metric(ta_data.get("macd_signal")),
-            macd_histogram=format_metric(ta_data.get("macd_histogram")),
-            macd_crossover=ta_data.get("macd_crossover", "neutral").upper(),
-            stoch_k=format_metric(ta_data.get("stoch_k")),
-            stoch_d=format_metric(ta_data.get("stoch_d")),
-            roc_10=format_metric(ta_data.get("roc_10")),
-            bb_upper=format_metric(ta_data.get("bb_upper")),
-            bb_middle=format_metric(ta_data.get("bb_middle")),
-            bb_lower=format_metric(ta_data.get("bb_lower")),
-            bb_pct_b=format_metric(ta_data.get("bb_pct_b")),
-            bb_pct_b_pct=format_metric((ta_data.get("bb_pct_b") or 0) * 100),
-            bb_width=format_metric(bb_width),
-            bb_squeeze=bb_squeeze.upper(),
-            bb_position=ta_data.get("bb_position", "inside").replace("_", " ").upper(),
-            atr_14=format_metric(ta_data.get("atr_14")),
-            volume_today=ta_data.get("volume_today", 0),
-            volume_sma_20=ta_data.get("volume_sma_20", 0),
-            volume_ratio=format_metric(vol_ratio),
-            volume_interpretation=vol_interp.upper(),
-            obv_trend=obv_trend.upper(),
-            obv_interpretation=obv_interp.upper(),
-            high_52w=format_metric(ta_data.get("high_52w")),
-            pct_from_52w_high=format_metric(ta_data.get("pct_from_52w_high")),
-            low_52w=format_metric(ta_data.get("low_52w")),
-            pivot=format_metric(ta_data.get("pivot")),
-            resistance_1=format_metric(ta_data.get("resistance_1")),
-            support_1=format_metric(ta_data.get("support_1")),
-            fib_0=format_metric(fib.get("fib_0")),
-            fib_236=format_metric(fib.get("fib_236")),
-            fib_382=format_metric(fib.get("fib_382")),
-            fib_500=format_metric(fib.get("fib_500")),
-            fib_618=format_metric(fib.get("fib_618")),
-            fib_786=format_metric(fib.get("fib_786")),
-            fib_100=format_metric(fib.get("fib_100"))
-        )
-        
-        response = await client.chat.completions.create(
-            model='llama-3.3-70b-versatile',
-            messages=[
-                {"role": "system", "content": TECHNICAL_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        
-        text = response.choices[0].message.content.strip()
-        data = json.loads(text)
-        
-        return AgentReport(
-            agent_name="Technical Analyst",
-            status=AgentStatus.COMPLETE,
-            summary=data.get("summary", ""),
-            score=data.get("score", 5.0),
-            key_findings=data.get("key_findings", []),
-            risk_flags=data.get("risk_flags", []),
-            confidence=data.get("confidence", 0.0),
-            data=data
-        )
-    except Exception as e:
-        print(f"Technical Analyst Error: {e}")
-        return AgentReport(
-            agent_name="Technical Analyst",
-            status=AgentStatus.ERROR,
-            summary=f"Analysis failed: {str(e)}",
-            score=5.0,
-            key_findings=[],
-            risk_flags=["TA failed"],
-            confidence=0.0,
-            data={}
-        )
+    prompt = TECHNICAL_USER_PROMPT.format(
+        company_name=state["company_name"],
+        ticker=state["ticker"],
+        current_price=format_metric(c),
+        sma_20=format_metric(ta_data.get("sma_20")),
+        above_below_sma20="ABOVE" if ta_data.get("above_sma_20") else "BELOW",
+        sma_50=format_metric(ta_data.get("sma_50")),
+        above_below_sma50="ABOVE" if ta_data.get("above_sma_50") else "BELOW",
+        sma_200=format_metric(ta_data.get("sma_200")),
+        above_below_sma200="ABOVE" if ta_data.get("above_sma_200") else "BELOW",
+        ema_21=format_metric(ta_data.get("ema_21")),
+        ma_trend=ta_data.get("ma_trend", "mixed").replace("_", " ").title(),
+        golden_cross="YES" if ta_data.get("golden_cross") else "NO",
+        adx=format_metric(ta_data.get("adx")),
+        trend_strength=ta_data.get("trend_strength", "weak").upper(),
+        adx_plus_di=format_metric(ta_data.get("adx_plus_di")),
+        adx_minus_di=format_metric(ta_data.get("adx_minus_di")),
+        trend_direction=ta_data.get("trend_direction", "neutral").upper(),
+        rsi_14=format_metric(rsi),
+        rsi_interpretation=rsi_interp.upper(),
+        rsi_9=format_metric(ta_data.get("rsi_9")),
+        macd=format_metric(ta_data.get("macd")),
+        macd_signal=format_metric(ta_data.get("macd_signal")),
+        macd_histogram=format_metric(ta_data.get("macd_histogram")),
+        macd_crossover=ta_data.get("macd_crossover", "neutral").upper(),
+        stoch_k=format_metric(ta_data.get("stoch_k")),
+        stoch_d=format_metric(ta_data.get("stoch_d")),
+        roc_10=format_metric(ta_data.get("roc_10")),
+        bb_upper=format_metric(ta_data.get("bb_upper")),
+        bb_middle=format_metric(ta_data.get("bb_middle")),
+        bb_lower=format_metric(ta_data.get("bb_lower")),
+        bb_pct_b=format_metric(ta_data.get("bb_pct_b")),
+        bb_pct_b_pct=format_metric((ta_data.get("bb_pct_b") or 0) * 100),
+        bb_width=format_metric(bb_width),
+        bb_squeeze=bb_squeeze.upper(),
+        bb_position=ta_data.get("bb_position", "inside").replace("_", " ").upper(),
+        atr_14=format_metric(ta_data.get("atr_14")),
+        volume_today=ta_data.get("volume_today", 0),
+        volume_sma_20=ta_data.get("volume_sma_20", 0),
+        volume_ratio=format_metric(vol_ratio),
+        volume_interpretation=vol_interp.upper(),
+        obv_trend=obv_trend.upper(),
+        obv_interpretation=obv_interp.upper(),
+        high_52w=format_metric(ta_data.get("high_52w")),
+        pct_from_52w_high=format_metric(ta_data.get("pct_from_52w_high")),
+        low_52w=format_metric(ta_data.get("low_52w")),
+        pivot=format_metric(ta_data.get("pivot")),
+        resistance_1=format_metric(ta_data.get("resistance_1")),
+        support_1=format_metric(ta_data.get("support_1")),
+        fib_0=format_metric(fib.get("fib_0")),
+        fib_236=format_metric(fib.get("fib_236")),
+        fib_382=format_metric(fib.get("fib_382")),
+        fib_500=format_metric(fib.get("fib_500")),
+        fib_618=format_metric(fib.get("fib_618")),
+        fib_786=format_metric(fib.get("fib_786")),
+        fib_100=format_metric(fib.get("fib_100"))
+    )
+    
+    text = await call_llm_with_retry(
+        client=client,
+        messages=[
+            {"role": "system", "content": TECHNICAL_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    
+    data = parse_llm_json(text)
+    
+    return AgentReport(
+        agent_name="Technical Analyst",
+        status=AgentStatus.COMPLETE,
+        summary=data.get("summary", ""),
+        score=data.get("score", 5.0),
+        key_findings=data.get("key_findings", []),
+        risk_flags=data.get("risk_flags", []),
+        confidence=data.get("confidence", 0.0),
+        data=data
+    )

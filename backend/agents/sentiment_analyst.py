@@ -1,6 +1,5 @@
-import json
 import re
-from agents.base_agent import get_llm
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 def compute_news_stats(news_items: list, fii_dii: dict) -> dict:
@@ -225,119 +224,103 @@ Provide output as JSON with this exact schema:
 }}
 """
 
+@agent_with_fallback("Sentiment Analyst", default_score=5.0)
 async def run_sentiment_analysis(state: StockAnalysisState) -> AgentReport:
     """Run sentiment and news analysis."""
-    try:
-        client = get_llm()
-        news  = state.get("news_data", [])
-        fii   = state.get("fii_dii_data", {})
-        info  = state.get("fundamental_data", {})
-        price = state.get("price_data", {})
+    client = get_llm()
+    news  = state.get("news_data", [])
+    fii   = state.get("fii_dii_data", {})
+    info  = state.get("fundamental_data", {})
+    price = state.get("price_data", {})
 
-        # Compute stats before sending to LLM
-        stats = compute_news_stats(news, fii)
+    # Compute stats before sending to LLM
+    stats = compute_news_stats(news, fii)
 
-        # Determine large-cap status (Nifty50 market cap threshold ~₹50,000 Cr)
-        market_cap_cr = (info.get("market_cap") or 0) / 1e7
-        is_large_cap  = market_cap_cr > 50000
+    # Determine large-cap status (Nifty50 market cap threshold ~₹50,000 Cr)
+    market_cap_cr = (info.get("market_cap") or 0) / 1e7
+    is_large_cap  = market_cap_cr > 50000
 
-        # Determine index membership
-        index_membership = "Nifty50" if market_cap_cr > 100000 else \
-                           "Nifty100" if market_cap_cr > 50000 else \
-                           "Nifty500" if market_cap_cr > 10000 else "Small/Mid Cap"
+    # Determine index membership
+    index_membership = "Nifty50" if market_cap_cr > 100000 else \
+                       "Nifty100" if market_cap_cr > 50000 else \
+                       "Nifty500" if market_cap_cr > 10000 else "Small/Mid Cap"
 
-        # Format news items for prompt
-        news_items_formatted = "\\n".join([
-            f"- {a.get('title', '?')} | Source: {a.get('source','?')} | Sentiment: {a.get('sentiment','?')} | {a.get('date','')[:10]}"
-            for a in news[:15]
-        ]) if news else "NO NEWS ARTICLES FOUND IN LAST 7 DAYS"
+    # Format news items for prompt
+    news_items_formatted = "\\n".join([
+        f"- {a.get('title', '?')} | Source: {a.get('source','?')} | Sentiment: {a.get('sentiment','?')} | {a.get('date','')[:10]}"
+        for a in news[:15]
+    ]) if news else "NO NEWS ARTICLES FOUND IN LAST 7 DAYS"
 
-        # Format FII/DII daily table
-        daily = fii.get("daily_records", [])
-        fii_dii_daily_table = "\\n".join([
-            f"  {d.get('date','')}: FII ₹{d.get('fii_net_buy_sell','?')} Cr | DII ₹{d.get('dii_net_buy_sell','?')} Cr"
-            for d in daily[:7]
-        ]) if daily else "FII/DII daily data unavailable"
+    # Format FII/DII daily table
+    daily = fii.get("daily_records", [])
+    fii_dii_daily_table = "\\n".join([
+        f"  {d.get('date','')}: FII ₹{d.get('fii_net_buy_sell','?')} Cr | DII ₹{d.get('dii_net_buy_sell','?')} Cr"
+        for d in daily[:7]
+    ]) if daily else "FII/DII daily data unavailable"
 
-        # Dominant event detection (simple heuristic)
-        dominant_keywords_positive = ["buyback", "bonus", "beat", "record profit", "acquisition", "order win"]
-        dominant_keywords_negative = ["fraud", "penalty", "ban", "miss", "resignation", "default", "sebi notice"]
-        dominant_event_exists = False
-        dominant_event_description = "none"
-        for a in news[:5]:
-            title_lower = (a.get("title") or "").lower()
-            if any(kw in title_lower for kw in dominant_keywords_positive):
-                dominant_event_exists = True
-                dominant_event_description = f"POSITIVE: {a.get('title')}"
-                break
-            if any(kw in title_lower for kw in dominant_keywords_negative):
-                dominant_event_exists = True
-                dominant_event_description = f"NEGATIVE: {a.get('title')}"
-                break
+    # Dominant event detection (simple heuristic)
+    dominant_keywords_positive = ["buyback", "bonus", "beat", "record profit", "acquisition", "order win"]
+    dominant_keywords_negative = ["fraud", "penalty", "ban", "miss", "resignation", "default", "sebi notice"]
+    dominant_event_exists = False
+    dominant_event_description = "none"
+    for a in news[:5]:
+        title_lower = (a.get("title") or "").lower()
+        if any(kw in title_lower for kw in dominant_keywords_positive):
+            dominant_event_exists = True
+            dominant_event_description = f"POSITIVE: {a.get('title')}"
+            break
+        if any(kw in title_lower for kw in dominant_keywords_negative):
+            dominant_event_exists = True
+            dominant_event_description = f"NEGATIVE: {a.get('title')}"
+            break
 
-        prompt = SENTIMENT_USER_PROMPT.format(
-            company_name              = state["company_name"],
-            ticker                    = state["ticker"],
-            sector                    = info.get("sector", "Unknown"),
-            market_cap_cr             = round(market_cap_cr, 0),
-            index_membership          = index_membership,
-            is_large_cap              = "YES" if is_large_cap else "NO",
-            article_count             = stats["article_count"],
-            news_volume               = stats["news_volume"],
-            marketaux_avg_sentiment   = stats["marketaux_avg_sentiment"] or "N/A (no articles)",
-            positive_count            = stats["positive_count"],
-            negative_count            = stats["negative_count"],
-            neutral_count             = stats["neutral_count"],
-            news_items_formatted      = news_items_formatted,
-            fii_10day_net             = stats["fii_10day_net"],
-            dii_10day_net             = stats["dii_10day_net"],
-            fii_stance                = stats["fii_stance"],
-            dii_stance                = stats["dii_stance"],
-            fii_dii_daily_table       = fii_dii_daily_table,
-            gdelt_article_count       = state.get("gdelt_data", {}).get("article_count", 0),
-            gdelt_avg_tone            = state.get("gdelt_data", {}).get("avg_tone", "N/A"),
-            gdelt_headlines           = "\\n".join(state.get("gdelt_data", {}).get("sample_headlines", ["N/A"])),
-            recent_corporate_events   = state.get("corporate_events", "None identified"),
-            dominant_event_exists     = "YES" if dominant_event_exists else "NO",
-            dominant_event_description = dominant_event_description,
-        )
+    prompt = SENTIMENT_USER_PROMPT.format(
+        company_name              = state["company_name"],
+        ticker                    = state["ticker"],
+        sector                    = info.get("sector", "Unknown"),
+        market_cap_cr             = round(market_cap_cr, 0),
+        index_membership          = index_membership,
+        is_large_cap              = "YES" if is_large_cap else "NO",
+        article_count             = stats["article_count"],
+        news_volume               = stats["news_volume"],
+        marketaux_avg_sentiment   = stats["marketaux_avg_sentiment"] or "N/A (no articles)",
+        positive_count            = stats["positive_count"],
+        negative_count            = stats["negative_count"],
+        neutral_count             = stats["neutral_count"],
+        news_items_formatted      = news_items_formatted,
+        fii_10day_net             = stats["fii_10day_net"],
+        dii_10day_net             = stats["dii_10day_net"],
+        fii_stance                = stats["fii_stance"],
+        dii_stance                = stats["dii_stance"],
+        fii_dii_daily_table       = fii_dii_daily_table,
+        gdelt_article_count       = state.get("gdelt_data", {}).get("article_count", 0),
+        gdelt_avg_tone            = state.get("gdelt_data", {}).get("avg_tone", "N/A"),
+        gdelt_headlines           = "\\n".join(state.get("gdelt_data", {}).get("sample_headlines", ["N/A"])),
+        recent_corporate_events   = state.get("corporate_events", "None identified"),
+        dominant_event_exists     = "YES" if dominant_event_exists else "NO",
+        dominant_event_description = dominant_event_description,
+    )
 
-        messages = [
-            {"role": "system", "content": SENTIMENT_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ]
+    messages = [
+        {"role": "system", "content": SENTIMENT_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt}
+    ]
 
-        # Use the Groq client standard invocation like it previously was
-        response = await client.chat.completions.create(
-            model='llama-3.3-70b-versatile',
-            messages=messages,
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
+    # Use the robust LLM caller with fallback
+    text = await call_llm_with_retry(
+        client=client,
+        messages=messages
+    )
 
-        raw = response.choices[0].message.content.strip()
-        raw = re.sub(r"```json|```", "", raw).strip()
-        data = json.loads(raw)
+    data = parse_llm_json(text)
 
-        return AgentReport(
-            agent_name   = "Sentiment Analyst",
-            status       = AgentStatus.COMPLETE,
-            summary      = data["summary"],
-            score        = float(data["score"]),
-            key_findings = data["key_findings"],
-            risk_flags   = data.get("risk_flags", []),
-            confidence   = float(data["confidence"]),
-            data         = data,
-        )
-    except Exception as e:
-        print(f"Sentiment Analyst Error: {e}")
-        return AgentReport(
-            agent_name="Sentiment Analyst",
-            status=AgentStatus.ERROR,
-            summary=f"Analysis failed: {str(e)}",
-            score=5.0,
-            key_findings=[],
-            risk_flags=["Analysis failed"],
-            confidence=0.0,
-            data={}
-        )
+    return AgentReport(
+        agent_name   = "Sentiment Analyst",
+        status       = AgentStatus.COMPLETE,
+        summary      = data["summary"],
+        score        = float(data["score"]),
+        key_findings = data["key_findings"],
+        risk_flags   = data.get("risk_flags", []),
+        confidence   = float(data["confidence"]),
+        data         = data,
+    )

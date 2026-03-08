@@ -1,6 +1,5 @@
-import json
 import numpy as np
-from agents.base_agent import get_llm
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 RISK_SYSTEM_PROMPT = """You are a Senior Risk Manager at a SEBI-registered Portfolio Management Service (PMS) firm
@@ -99,82 +98,67 @@ def format_metric(val):
     try: return f"{float(val):.2f}"
     except: return str(val)
 
+@agent_with_fallback("Risk Analyst", default_score=5.0)
 async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
     """Run risk analysis with advanced ta parsing."""
-    try:
-        client = get_llm()
-        fundamental = state.get("fundamental_data", {})
-        price = state.get("price_data", {})
-        risk = state.get("risk_data", {}) # Will be populated by market_data.py
-        nse = state.get("nse_data", {})
-        
-        b = risk.get("beta")
-        b_interp = "N/A"
-        if b:
-            if b > 1.2: b_interp = "aggressive (highly volatile)"
-            elif b < 0.8: b_interp = "defensive (lower volatility)"
-            else: b_interp = "market-like (tracks broader index)"
+    client = get_llm()
+    fundamental = state.get("fundamental_data", {})
+    price = state.get("price_data", {})
+    risk = state.get("risk_data", {}) # Will be populated by market_data.py
+    nse = state.get("nse_data", {})
+    
+    b = risk.get("beta")
+    b_interp = "N/A"
+    if b:
+        if b > 1.2: b_interp = "aggressive (highly volatile)"
+        elif b < 0.8: b_interp = "defensive (lower volatility)"
+        else: b_interp = "market-like (tracks broader index)"
 
-        prompt = RISK_USER_PROMPT.format(
-            company_name=state["company_name"],
-            ticker=state["ticker"],
-            beta=format_metric(b),
-            beta_interpretation=b_interp,
-            vol_30d=format_metric(risk.get("volatility_30d")),
-            vol_90d=format_metric(risk.get("volatility_90d")),
-            vol_1y=format_metric(risk.get("volatility_1y")),
-            max_drawdown_1y=format_metric(risk.get("max_drawdown_1y")),
-            sharpe_ratio=format_metric(risk.get("sharpe_ratio")),
-            var_95_1day=format_metric(risk.get("var_95_1day")),
-            var_1lakh=format_metric(abs(risk.get("var_95_1day", 0)) * 1000) if risk.get("var_95_1day") else "N/A",
-            atr_14=format_metric(risk.get("atr_14")),
-            pct_from_52w_high=format_metric(risk.get("pct_from_52w_high")),
-            pct_from_52w_low=format_metric(risk.get("pct_from_52w_low")),
-            debt_to_equity=format_metric(fundamental.get("debt_to_equity")),
-            current_ratio=format_metric(fundamental.get("current_ratio")),
-            interest_coverage=format_metric(fundamental.get("interest_coverage")),
-            total_debt_cr=format_metric((fundamental.get("total_debt") or 0) / 10000000),
-            free_cashflow_cr=format_metric((fundamental.get("free_cashflow") or 0) / 10000000),
-            sector=fundamental.get("sector", "Unknown"),
-            industry=fundamental.get("industry", "Unknown"),
-            market_cap_cr=format_metric((price.get("market_cap") or 0) / 10000000),
-            delivery_pct_today=format_metric(nse.get("delivery_pct_today", "N/A")),
-            circuit_limit=nse.get("circuit_limit", "20%"),
-            surveillance_flag=nse.get("surveillance_flag", "None")
-        )
-        
-        response = await client.chat.completions.create(
-            model='llama-3.3-70b-versatile',
-            messages=[
-                {"role": "system", "content": RISK_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        
-        text = response.choices[0].message.content.strip()
-        data = json.loads(text)
-        
-        return AgentReport(
-            agent_name="Risk Analyst",
-            status=AgentStatus.COMPLETE,
-            summary=data.get("summary", ""),
-            score=data.get("score", 5.0),
-            key_findings=data.get("key_findings", []),
-            risk_flags=data.get("risk_flags", []),
-            confidence=data.get("confidence", 0.0),
-            data=data
-        )
-    except Exception as e:
-        print(f"Risk Analyst Error: {e}")
-        return AgentReport(
-            agent_name="Risk Analyst",
-            status=AgentStatus.ERROR,
-            summary=f"Analysis failed: {str(e)}",
-            score=5.0,
-            key_findings=[],
-            risk_flags=["Risk execution failed"],
-            confidence=0.0,
-            data={}
-        )
+    prompt = RISK_USER_PROMPT.format(
+        company_name=state["company_name"],
+        ticker=state["ticker"],
+        beta=format_metric(b),
+        beta_interpretation=b_interp,
+        vol_30d=format_metric(risk.get("volatility_30d")),
+        vol_90d=format_metric(risk.get("volatility_90d")),
+        vol_1y=format_metric(risk.get("volatility_1y")),
+        max_drawdown_1y=format_metric(risk.get("max_drawdown_1y")),
+        sharpe_ratio=format_metric(risk.get("sharpe_ratio")),
+        var_95_1day=format_metric(risk.get("var_95_1day")),
+        var_1lakh=format_metric(abs(risk.get("var_95_1day", 0)) * 1000) if risk.get("var_95_1day") else "N/A",
+        atr_14=format_metric(risk.get("atr_14")),
+        pct_from_52w_high=format_metric(risk.get("pct_from_52w_high")),
+        pct_from_52w_low=format_metric(risk.get("pct_from_52w_low")),
+        debt_to_equity=format_metric(fundamental.get("debt_to_equity")),
+        current_ratio=format_metric(fundamental.get("current_ratio")),
+        interest_coverage=format_metric(fundamental.get("interest_coverage")),
+        total_debt_cr=format_metric((fundamental.get("total_debt") or 0) / 10000000),
+        free_cashflow_cr=format_metric((fundamental.get("free_cashflow") or 0) / 10000000),
+        sector=fundamental.get("sector", "Unknown"),
+        industry=fundamental.get("industry", "Unknown"),
+        market_cap_cr=format_metric((price.get("market_cap") or 0) / 10000000),
+        delivery_pct_today=format_metric(nse.get("delivery_pct_today", "N/A")),
+        circuit_limit=nse.get("circuit_limit", "20%"),
+        surveillance_flag=nse.get("surveillance_flag", "None")
+    )
+    
+    text = await call_llm_with_retry(
+        client=client,
+        messages=[
+            {"role": "system", "content": RISK_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    
+    data = parse_llm_json(text)
+    
+    return AgentReport(
+        agent_name="Risk Analyst",
+        status=AgentStatus.COMPLETE,
+        summary=data.get("summary", ""),
+        score=data.get("score", 5.0),
+        key_findings=data.get("key_findings", []),
+        risk_flags=data.get("risk_flags", []),
+        confidence=data.get("confidence", 0.0),
+        data=data
+    )
