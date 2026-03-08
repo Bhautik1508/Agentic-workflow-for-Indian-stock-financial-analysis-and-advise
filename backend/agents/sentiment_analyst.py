@@ -263,7 +263,11 @@ async def run_sentiment_analysis(state: StockAnalysisState) -> AgentReport:
     dominant_keywords_negative = ["fraud", "penalty", "ban", "miss", "resignation", "default", "sebi notice"]
     dominant_event_exists = False
     dominant_event_description = "none"
-    for a in news[:5]:
+    
+    # safeguard against news not being a list
+    news_list = news if isinstance(news, list) else []
+    
+    for a in news_list[:5]:
         title_lower = (a.get("title") or "").lower()
         if any(kw in title_lower for kw in dominant_keywords_positive):
             dominant_event_exists = True
