@@ -2,113 +2,165 @@
 
 import { motion } from 'framer-motion';
 import { AgentReport } from '@/hooks/useSSE';
-import { ShieldAlert, TrendingUp, Brain, FileText, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { ShieldAlert, TrendingUp, Brain, BarChart3, Landmark, XCircle } from 'lucide-react';
 
-function cn(...inputs: ClassValue[]) {
-    return twMerge(clsx(inputs));
+const AGENT_CONFIG: Record<string, { color: string; icon: typeof BarChart3; label: string }> = {
+    'financial_node': { color: '#00ff9f', icon: BarChart3, label: 'Financial Analyst' },
+    'sentiment_node': { color: '#ff9f00', icon: Brain, label: 'Sentiment Analyst' },
+    'risk_node': { color: '#ff4060', icon: ShieldAlert, label: 'Risk Analyst' },
+    'technical_node': { color: '#4080ff', icon: TrendingUp, label: 'Technical Analyst' },
+    'macro_governance_node': { color: '#c0c040', icon: Landmark, label: 'Macro & Governance' },
+};
+
+function ScoreBar({ score }: { score: number }) {
+    const pct = Math.min(Math.max((score / 10) * 100, 0), 100);
+    const color = score >= 7 ? '#00ff9f' : score >= 5 ? '#ff9f00' : '#ff4060';
+
+    return (
+        <div className="flex items-center gap-2 w-full">
+            <div className="flex-1 h-[6px] bg-white/5 rounded-full overflow-hidden">
+                <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
+                    className="h-full rounded-full"
+                    style={{ backgroundColor: color }}
+                />
+            </div>
+            <span className="text-xs font-mono-num font-semibold min-w-[32px] text-right" style={{ color }}>
+                {score.toFixed(1)}
+            </span>
+        </div>
+    );
 }
 
-const getIcon = (name: string) => {
-    const n = name.toLowerCase();
-    if (n.includes('risk')) return <ShieldAlert size={20} className="text-warning" />;
-    if (n.includes('techni')) return <TrendingUp size={20} className="text-accent" />;
-    if (n.includes('senti')) return <Brain size={20} className="text-secondary" />;
-    if (n.includes('financ')) return <FileText size={20} className="text-primary" />;
-    return <CheckCircle2 size={20} className="text-foreground/50" />;
-}
+export function AgentCard({ nodeName, report, isRunning }: { nodeName: string; report?: AgentReport; isRunning: boolean }) {
+    const config = AGENT_CONFIG[nodeName] || { color: '#6b82a0', icon: BarChart3, label: nodeName };
+    const Icon = config.icon;
+    const displayName = report?.agent_name || config.label;
 
-export function AgentCard({ nodeName, report, isRunning }: { nodeName: string, report?: AgentReport, isRunning: boolean }) {
-
-    // Extract a readable name
-    const displayName = report?.agent_name || nodeName.replace('_node', '').replace('_', ' ').toUpperCase();
-
+    // Pending state
     if (!report && !isRunning) {
         return (
-            <div className="flex items-center gap-4 p-4 rounded-xl border border-border/50 bg-surface/20 opacity-40">
-                <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
-                    {getIcon(displayName)}
-                </div>
-                <div>
-                    <p className="text-sm font-medium text-foreground/50">{displayName}</p>
-                    <p className="text-xs text-foreground/30">Waiting for deployment...</p>
+            <div
+                className="rounded-xl border border-border/30 bg-surface/20 p-4 opacity-40"
+                style={{ borderLeftColor: config.color, borderLeftWidth: '3px' }}
+            >
+                <div className="flex items-center gap-3">
+                    <Icon size={16} style={{ color: config.color }} />
+                    <span className="text-sm text-text-dim">{config.label}</span>
                 </div>
             </div>
         );
     }
 
+    // Running / analyzing state
     if (isRunning && !report) {
         return (
             <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-4 p-4 rounded-xl border border-primary/30 bg-primary/5 shadow-[0_0_15px_rgba(0,212,255,0.05)] relative overflow-hidden"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-xl border border-border/40 bg-surface/40 p-4 relative overflow-hidden"
+                style={{ borderLeftColor: config.color, borderLeftWidth: '3px' }}
             >
+                {/* Shimmer effect */}
                 <motion.div
-                    className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-primary/10 to-transparent -translate-x-full"
-                    animate={{ translateX: ['100%'] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.02] to-transparent"
+                    animate={{ x: ['-100%', '100%'] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                 />
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Loader2 size={18} className="text-primary animate-spin delay-150" />
+                <div className="flex items-center gap-3 relative z-10">
+                    <Icon size={16} style={{ color: config.color }} />
+                    <span className="text-sm font-medium" style={{ color: config.color }}>{config.label}</span>
+                    <div className="flex gap-1 ml-auto">
+                        <div className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ backgroundColor: config.color }} />
+                        <div className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ backgroundColor: config.color }} />
+                        <div className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ backgroundColor: config.color }} />
+                    </div>
                 </div>
-                <div>
-                    <p className="text-sm font-medium text-primary">{displayName}</p>
-                    <p className="text-xs text-foreground/50 font-mono tracking-wider">ANALYZING DATA...</p>
-                </div>
+                <p className="text-[10px] font-mono text-text-dim mt-2 tracking-wider uppercase relative z-10">
+                    Analysing...
+                </p>
             </motion.div>
         );
     }
 
+    // Complete / Error state
     const isError = report!.status === 'error';
 
     return (
         <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className={cn(
-                "flex flex-col gap-3 p-5 rounded-xl border bg-surface/80 backdrop-blur-md shadow-lg",
-                isError ? "border-danger/30" : "border-border"
-            )}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            className="rounded-xl border border-border/50 bg-surface/60 backdrop-blur-sm overflow-hidden"
+            style={{ borderLeftColor: isError ? '#ff4060' : config.color, borderLeftWidth: '3px' }}
         >
-            <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-black/30 flex items-center justify-center border border-white/5">
-                        {isError ? <XCircle size={20} className="text-danger" /> : getIcon(displayName)}
+            <div className="p-4">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        {isError ? (
+                            <XCircle size={16} className="text-danger" />
+                        ) : (
+                            <Icon size={16} style={{ color: config.color }} />
+                        )}
+                        <h3 className="text-sm font-semibold text-foreground/90">{displayName}</h3>
                     </div>
-                    <div>
-                        <h3 className="font-semibold text-foreground/90">{displayName}</h3>
-                        <div className="flex items-center gap-2 mt-0.5">
-                            <span className={cn(
-                                "text-xs px-2 py-0.5 rounded-sm font-mono",
-                                isError ? "bg-danger/10 text-danger" : "bg-success/10 text-success"
-                            )}>
-                                {report!.status.toUpperCase()}
+                    <span
+                        className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                        style={{
+                            backgroundColor: isError ? 'rgba(255,64,96,0.1)' : 'rgba(0,255,159,0.1)',
+                            color: isError ? '#ff4060' : '#00ff9f',
+                        }}
+                    >
+                        {isError ? 'ERROR' : 'COMPLETE'}
+                    </span>
+                </div>
+
+                {/* Score bar */}
+                {!isError && <ScoreBar score={report!.score} />}
+
+                {/* Summary */}
+                <p className="text-xs text-foreground/60 leading-relaxed mt-3 line-clamp-3">
+                    {report!.summary}
+                </p>
+
+                {/* Key findings as pills */}
+                {!isError && report!.key_findings && report!.key_findings.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-3">
+                        {report!.key_findings.slice(0, 3).map((finding, idx) => (
+                            <span
+                                key={idx}
+                                className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] text-text-muted border border-white/[0.06] truncate max-w-[200px]"
+                            >
+                                {finding}
                             </span>
-                            {!isError && (
-                                <span className="text-xs text-foreground/50 font-mono">
-                                    SCORE: {report!.score}/10
-                                </span>
-                            )}
-                        </div>
+                        ))}
                     </div>
-                </div>
-            </div>
+                )}
 
-            <div className="mt-2 text-sm text-foreground/70 leading-relaxed border-l-2 border-border/50 pl-3">
-                {report!.summary}
-            </div>
+                {/* Risk flags */}
+                {!isError && report!.risk_flags && report!.risk_flags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                        {report!.risk_flags.slice(0, 2).map((risk, idx) => (
+                            <span
+                                key={idx}
+                                className="inline-flex items-center gap-1 text-[9px] uppercase font-mono tracking-wider px-1.5 py-0.5 rounded bg-danger/10 text-danger/80 border border-danger/15"
+                            >
+                                ⚠ {risk}
+                            </span>
+                        ))}
+                    </div>
+                )}
 
-            {!isError && report!.risk_flags && report!.risk_flags.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                    {report!.risk_flags.map((risk, idx) => (
-                        <span key={idx} className="inline-flex items-center gap-1 text-[10px] uppercase font-mono tracking-wider px-2 py-1 rounded bg-danger/10 text-danger/80 border border-danger/20">
-                            <ShieldAlert size={10} /> {risk}
-                        </span>
-                    ))}
-                </div>
-            )}
+                {/* Confidence */}
+                {!isError && (
+                    <div className="mt-3 text-[10px] text-text-dim font-mono">
+                        Confidence: {((report!.confidence || 0) * 100).toFixed(0)}%
+                    </div>
+                )}
+            </div>
         </motion.div>
     );
 }
