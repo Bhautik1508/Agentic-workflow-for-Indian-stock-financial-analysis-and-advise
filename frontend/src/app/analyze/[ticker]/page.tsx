@@ -1,12 +1,13 @@
 'use client';
 
-import { useSSE } from '@/hooks/useSSE';
+import { useAnalysis } from '@/hooks/useAnalysis';
 import { use } from 'react';
 import { motion } from 'framer-motion';
 import { AgentCard } from '@/components/AgentCard';
 import { VerdictPanel } from '@/components/VerdictPanel';
 import { AnalystRadar } from '@/components/RadarChart';
 import { StockChart } from '@/components/StockChart';
+import { HistorySidebar } from '@/components/HistorySidebar';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
@@ -21,7 +22,7 @@ const NODE_NAMES = [
 export default function AnalyzePage({ params }: { params: Promise<{ ticker: string }> }) {
     const unwrappedParams = use(params);
     const ticker = unwrappedParams.ticker;
-    const state = useSSE(ticker);
+    const state = useAnalysis(ticker);
 
     const decodedName = decodeURIComponent(ticker);
     const completedCount = Object.keys(state.agents).length;
@@ -31,6 +32,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
 
     return (
         <div className="w-full min-h-screen relative z-10">
+            <HistorySidebar />
             {/* Sticky Top Bar */}
             <div className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-xl border-b border-border/40">
                 <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
