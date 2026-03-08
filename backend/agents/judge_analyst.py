@@ -1,5 +1,4 @@
-import json
-from agents.base_agent import get_llm
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 JUDGE_WEIGHTS = {
@@ -18,11 +17,13 @@ def adjust_for_low_confidence_sentiment(reports: dict, weights: dict) -> tuple[d
     fundamental stocks toward HOLD.
     """
     sentiment_report = reports.get("Sentiment Analyst", {})
-    sentiment_confidence = sentiment_report.get("confidence", 1.0)
-    sentiment_data = sentiment_report.get("data", {})
     
+    # In case data isn't a dict due to parsing fallback logic
+    sentiment_data = sentiment_report.get("data", {}) if isinstance(sentiment_report, dict) else getattr(sentiment_report, "data", {})
+    sentiment_confidence = sentiment_report.get("confidence", 1.0) if isinstance(sentiment_report, dict) else getattr(sentiment_report, "confidence", 1.0)
+
     # Safely get the news_available flag, default True so we don't accidentally halve it if missing
-    news_available = sentiment_data.get("news_available", True)
+    news_available = sentiment_data.get("news_available", True) if isinstance(sentiment_data, dict) else True
 
     if not news_available or sentiment_confidence < 0.5:
         freed_weight = weights["sentiment"] * 0.5
@@ -97,119 +98,101 @@ Provide your final judgement as JSON with this exact schema:
 }}
 """
 
+@agent_with_fallback("Judge Analyst", default_score=5.0)
 async def run_judge_analyst(state: StockAnalysisState) -> AgentReport:
     """Run the final judge analysis to synthesize reports into a verdict."""
-    try:
-        client = get_llm()
-        raw_reports = state.get("analyst_reports", {})
-        
-        # Add dynamic weighting based on confidence rules
-        reports, effective_weights = adjust_for_low_confidence_sentiment(raw_reports, JUDGE_WEIGHTS)
-        
-        # Safely map external analyst names to internal weighting keys
-        # "Financial Analyst" -> "financial", etc.
-        weighting_map = {
-            "Financial Analyst": "financial",
-            "Technical Analyst": "technical",
-            "Risk Analyst": "risk",
-            "Sentiment Analyst": "sentiment",
-            "Macro & Governance Analyst": "macro_gov"
-        }
-        
-        # Calculate mathematical baseline weighted score
-        calculated_score = 0.0
-        for agent_name, report in reports.items():
-            if report and isinstance(report, dict) and report.get("status") == AgentStatus.COMPLETE:
-                score = report.get("score", 5.0)
-                if agent_name in weighting_map:
-                    calculated_score += score * effective_weights[weighting_map[agent_name]]
-        
-        weighted_score = round(calculated_score, 2)
-        
-        # Get sentiments flags for the prompt inclusion
-        sentiment_report = reports.get("Sentiment Analyst", {})
-        sentiment_confidence = sentiment_report.get("confidence", 1.0)
-        sentiment_data = sentiment_report.get("data", {})
-        sentiment_news_available = sentiment_data.get("news_available", True)
-        effective_sentiment_weight = effective_weights["sentiment"]
-        
-        if not sentiment_news_available or sentiment_confidence < 0.5:
-            sentiment_weight_note = "NOTE: Sentiment score is based on FII/DII data only (no news).\\n Its weight has been halved. Do not let the sentiment score override strong fundamental\\n or technical signals. A 6.0 no-news sentiment for a Nifty50 stock is a NEUTRAL signal,\\n not a negative one — treat it accordingly."
-        else:
-            sentiment_weight_note = "Sentiment data is robust. Weight remains standard."
+    client = get_llm()
+    raw_reports = state.get("analyst_reports", {})
+    
+    # Add dynamic weighting based on confidence rules
+    reports, effective_weights = adjust_for_low_confidence_sentiment(raw_reports, JUDGE_WEIGHTS)
+    
+    # Safely map external analyst names to internal weighting keys
+    # "Financial Analyst" -> "financial", etc.
+    weighting_map = {
+        "Financial Analyst": "financial",
+        "Technical Analyst": "technical",
+        "Risk Analyst": "risk",
+        "Sentiment Analyst": "sentiment",
+        "Macro & Governance Analyst": "macro_gov"
+    }
+    
+    # Calculate mathematical baseline weighted score
+    calculated_score = 0.0
+    for agent_name, report in reports.items():
+        if report and isinstance(report, dict) and report.get("status") == AgentStatus.COMPLETE:
+            score = report.get("score", 5.0)
+            if agent_name in weighting_map:
+                calculated_score += score * effective_weights[weighting_map[agent_name]]
+    
+    weighted_score = round(calculated_score, 2)
+    
+    # Get sentiments flags for the prompt inclusion
+    sentiment_report = reports.get("Sentiment Analyst", {})
+    sentiment_confidence = sentiment_report.get("confidence", 1.0) if isinstance(sentiment_report, dict) else getattr(sentiment_report, "confidence", 1.0)
+    sentiment_data = sentiment_report.get("data", {}) if isinstance(sentiment_report, dict) else getattr(sentiment_report, "data", {})
+    sentiment_news_available = sentiment_data.get("news_available", True) if isinstance(sentiment_data, dict) else True
+    effective_sentiment_weight = effective_weights["sentiment"]
+    
+    if not sentiment_news_available or sentiment_confidence < 0.5:
+        sentiment_weight_note = "NOTE: Sentiment score is based on FII/DII data only (no news).\\n Its weight has been halved. Do not let the sentiment score override strong fundamental\\n or technical signals. A 6.0 no-news sentiment for a Nifty50 stock is a NEUTRAL signal,\\n not a negative one — treat it accordingly."
+    else:
+        sentiment_weight_note = "Sentiment data is robust. Weight remains standard."
 
-        # Format all reports into a readable string
-        reports_text = ""
-        for agent_name, report in reports.items():
-            if report and isinstance(report, dict) and report.get("status") == AgentStatus.COMPLETE:
-                reports_text += f"[{agent_name.upper()}]\\n"
-                reports_text += f"Score: {report.get('score', 0)}/10 | Confidence: {report.get('confidence', 0.0)}\\n"
+    # Format all reports into a readable string
+    reports_text = ""
+    for agent_name, report in reports.items():
+        if report and isinstance(report, dict) and report.get("status") == AgentStatus.COMPLETE:
+            reports_text += f"[{agent_name.upper()}]\\n"
+            reports_text += f"Score: {report.get('score', 0)}/10 | Confidence: {report.get('confidence', 0.0)}\\n"
+            
+            # Check based on dict access
+            if "Macro" in agent_name:
+                env = report.get("data", {}).get("macro_environment", "Unknown") if isinstance(report.get("data"), dict) else "Unknown"
+                gov = report.get("data", {}).get("governance_quality", "Unknown") if isinstance(report.get("data"), dict) else "Unknown"
+                reports_text += f"Macro: {env} | Governance: {gov}\\n"
+            elif "Technical" in agent_name:
+                trend = report.get("data", {}).get("trend", "Unknown") if isinstance(report.get("data"), dict) else "Unknown"
+                reports_text += f"Trend: {trend}\\n"
                 
-                # Check based on dict access
-                if "Macro" in agent_name:
-                    env = report.get("data", {}).get("macro_environment", "Unknown")
-                    gov = report.get("data", {}).get("governance_quality", "Unknown")
-                    reports_text += f"Macro: {env} | Governance: {gov}\\n"
-                elif "Technical" in agent_name:
-                    trend = report.get("data", {}).get("trend", "Unknown")
-                    reports_text += f"Trend: {trend}\\n"
-                    
-                reports_text += f"Summary: {report.get('summary', '')}\\n"
-                reports_text += f"Findings: {'; '.join(report.get('key_findings', []))}\\n"
-                if report.get("risk_flags"):
-                    reports_text += f"Risks: {'; '.join(report.get('risk_flags', []))}\\n"
-                reports_text += "\\n"
-            else:
-                reports_text += f"[{agent_name.upper()}] Failed or pending.\\n\\n"
+            reports_text += f"Summary: {report.get('summary', '')}\\n"
+            reports_text += f"Findings: {'; '.join(report.get('key_findings', []))}\\n"
+            if report.get("risk_flags"):
+                reports_text += f"Risks: {'; '.join(report.get('risk_flags', []))}\\n"
+            reports_text += "\\n"
+        else:
+            reports_text += f"[{agent_name.upper()}] Failed or pending.\\n\\n"
 
-        if not reports_text: reports_text = "No reports generated."
+    if not reports_text: reports_text = "No reports generated."
 
-        prompt = JUDGE_USER_PROMPT.format(
-            company_name=state.get("company_name", "Unknown"),
-            ticker=state.get("ticker", "UNKNOWN"),
-            analyst_reports=reports_text,
-            sentiment_news_available="True" if sentiment_news_available else "False",
-            sentiment_confidence=sentiment_confidence,
-            effective_sentiment_weight=effective_sentiment_weight,
-            sentiment_weight_note=sentiment_weight_note,
-            weighted_score=weighted_score
-        )
+    prompt = JUDGE_USER_PROMPT.format(
+        company_name=state.get("company_name", "Unknown"),
+        ticker=state.get("ticker", "UNKNOWN"),
+        analyst_reports=reports_text,
+        sentiment_news_available="True" if sentiment_news_available else "False",
+        sentiment_confidence=sentiment_confidence,
+        effective_sentiment_weight=effective_sentiment_weight,
+        sentiment_weight_note=sentiment_weight_note,
+        weighted_score=weighted_score
+    )
 
-        response = await client.chat.completions.create(
-            model='llama-3.3-70b-versatile',
-            messages=[
-                {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        
-        text = response.choices[0].message.content.strip()
-        result = json.loads(text)
-        
-        return AgentReport(
-            agent_name="Judge Analyst",
-            status=AgentStatus.COMPLETE,
-            summary=result.get("summary", ""),
-            score=result.get("score"),
-            confidence=result.get("confidence", 0.0),
-            key_findings=result.get("key_findings", []),
-            risk_flags=result.get("risk_flags", []),
-            data=result
-        )
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Judge Analyst Error: {e}")
-        return AgentReport(
-            agent_name="Judge Analyst",
-            status=AgentStatus.ERROR,
-            summary=f"Analysis failed: {str(e)}",
-            score=5.0,
-            confidence=0.0,
-            key_findings=[],
-            risk_flags=["Judge execution failed"],
-            data={}
-        )
+    text = await call_llm_with_retry(
+        client=client,
+        messages=[
+            {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    
+    result = parse_llm_json(text)
+    
+    return AgentReport(
+        agent_name="Judge Analyst",
+        status=AgentStatus.COMPLETE,
+        summary=result.get("summary", ""),
+        score=result.get("score"),
+        confidence=result.get("confidence", 0.0),
+        key_findings=result.get("key_findings", []),
+        risk_flags=result.get("risk_flags", []),
+        data=result
+    )

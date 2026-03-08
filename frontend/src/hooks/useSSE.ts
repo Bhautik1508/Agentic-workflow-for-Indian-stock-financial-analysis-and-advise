@@ -56,13 +56,7 @@ export function useSSE(ticker: string | null) {
             const nodeName = data.node;
             const nodeState = data.state;
 
-            // Ensure we extract the report dynamically based on the node name
-            // e.g. 'financial_node' -> 'financial_report'
-            let reportData = null;
             if (nodeState && typeof nodeState === 'object') {
-                const reportKey = Object.keys(nodeState).find(k => k.endsWith('_report'));
-                if (reportKey) reportData = nodeState[reportKey];
-
                 // Handle Judge node which outputs direct final decision
                 if (nodeName === 'judge_node') {
                     setState(prev => ({
@@ -76,22 +70,71 @@ export function useSSE(ticker: string | null) {
                     }));
                     return;
                 }
-            }
 
-            if (reportData) {
-                setState(prev => ({
-                    ...prev,
-                    agents: {
-                        ...prev.agents,
-                        [nodeName]: reportData
+                // Map backend state keys directly to the pseudo node names expected by the UI
+                const KEY_TO_NODE_MAP: Record<string, string> = {
+                    'financial_report': 'financial_node',
+                    'sentiment_report': 'sentiment_node',
+                    'risk_report': 'risk_node',
+                    'technical_report': 'technical_node',
+                    'macro_governance_report': 'macro_governance_node'
+                };
+
+                const newAgents: Record<string, AgentReport> = {};
+                for (const [key, reportData] of Object.entries(nodeState)) {
+                    if (key.endsWith('_report') && reportData) {
+                        const mappedNodeName = KEY_TO_NODE_MAP[key] || key;
+                        newAgents[mappedNodeName] = reportData as AgentReport;
                     }
-                }));
+                }
+
+                if (Object.keys(newAgents).length > 0) {
+                    setState(prev => ({
+                        ...prev,
+                        agents: {
+                            ...prev.agents,
+                            ...newAgents
+                        }
+                    }));
+                }
             }
         });
 
         eventSource.addEventListener('complete', (e) => {
             const data = JSON.parse(e.data);
-            setState(prev => ({ ...prev, status: 'complete', message: data.message || 'Analysis Complete' }));
+            setState(prev => {
+                const newState = { ...prev, status: 'complete' as const, message: data.message || 'Analysis Complete' };
+                // If it's a cached response, it might include judge_report directly in complete
+                if (data.judge_report) {
+                    newState.final_decision = {
+                        decision: data.judge_report.final_decision || 'HOLD',
+                        confidence_score: data.judge_report.confidence_score || data.judge_report.confidence * 10 || 0,
+                        investment_thesis: data.judge_report.investment_thesis || data.judge_report.summary || '',
+                        key_risks: data.judge_report.key_risks || data.judge_report.risk_flags || []
+                    };
+                }
+
+                // Hydrate individual agent cards from the cache
+                if (data.reports) {
+                    const KEY_TO_NODE_MAP: Record<string, string> = {
+                        'financial_report': 'financial_node',
+                        'sentiment_report': 'sentiment_node',
+                        'risk_report': 'risk_node',
+                        'technical_report': 'technical_node',
+                        'macro_governance_report': 'macro_governance_node'
+                    };
+                    const newAgents: Record<string, AgentReport> = {};
+                    for (const [key, reportData] of Object.entries(data.reports)) {
+                        if (key.endsWith('_report') && reportData) {
+                            const mappedNodeName = KEY_TO_NODE_MAP[key] || key;
+                            newAgents[mappedNodeName] = reportData as AgentReport;
+                        }
+                    }
+                    newState.agents = { ...prev.agents, ...newAgents };
+                }
+
+                return newState;
+            });
             eventSource.close();
         });
 

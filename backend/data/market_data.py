@@ -136,6 +136,21 @@ def fetch_gdelt_sentiment(company_name: str) -> dict:
         return {"article_count": 0, "avg_tone": 0.5, "sample_headlines": []}
 
 
+async def _validate_ticker(ticker: str) -> bool:
+    """Verifies if a ticker actually exists on Yahoo Finance and has accessible data."""
+    try:
+        t = Ticker(ticker)
+        # Using a fast, lightweight property to check validity
+        price_info = t.price
+        # Valid if price dict exists and string ticker is a key inside without an error string
+        if isinstance(price_info, dict) and ticker in price_info:
+            if isinstance(price_info[ticker], dict) and 'regularMarketPrice' in price_info[ticker]:
+                return True
+        return False
+    except Exception:
+        return False
+
+
 async def resolve_ticker(company_name: str) -> str:
     """Resolve company name to NSE ticker using dict mapping and yahooquery fallback."""
     TICKER_MAP = {
@@ -169,19 +184,29 @@ async def resolve_ticker(company_name: str) -> str:
     }
     
     name_lower = company_name.lower().strip()
+    candidate = None
+    
     if name_lower in TICKER_MAP:
-        return TICKER_MAP[name_lower]
-        
+        candidate = TICKER_MAP[name_lower]
+        if await _validate_ticker(candidate):
+            return candidate
+            
     try:
         search_results = search(company_name)
         if search_results and "quotes" in search_results:
             for result in search_results["quotes"]:
                 if result.get("exchange") in ["NSI", "BSI", "NSE", "BSE", "NMS"]:
-                    return result["symbol"]
+                    candidate = result["symbol"]
+                    if await _validate_ticker(candidate):
+                        return candidate
     except Exception:
         pass
         
-    return company_name.upper().replace(" ", "") + NSE_SUFFIX
+    candidate = company_name.upper().replace(" ", "") + NSE_SUFFIX
+    if await _validate_ticker(candidate):
+        return candidate
+        
+    return "INVALID"
 
 import requests
 from bs4 import BeautifulSoup

@@ -16,6 +16,9 @@ async def run_stock_analysis(company_name: str):
     """
     yield {"event": "status", "data": f"Resolving ticker for {company_name}..."}
     ticker = await resolve_ticker(company_name)
+    if ticker == "INVALID":
+        yield {"event": "error", "data": f"Could not find a valid Indian stock ticker for '{company_name}'. Please try a different name."}
+        return
     
     yield {"event": "status", "data": f"Fetching core fundamental & price data for {ticker}..."}
     market_data = await fetch_all_market_data(ticker)

@@ -12,17 +12,64 @@ async def analyze_stock(company_name: str):
     """
     async def event_generator():
         try:
+            from data.market_data import resolve_ticker
+            from data.cache import get_cached_analysis, save_analysis_to_cache
+            
+            # Resolve early to check the cache
+            ticker = await resolve_ticker(company_name)
+            if ticker == "INVALID":
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"detail": f"Could not find a valid Indian stock ticker for '{company_name}'. Please try a different name."})
+                }
+                return
+                
+            cached = get_cached_analysis(ticker)
+            if cached:
+                # If cached, we stream a "complete" event immediately
+                yield {
+                    "event": "complete",
+                    "data": json.dumps(cached, default=str)
+                }
+                return
+                
+            final_report_saved = False
+            accumulated_reports = {}
             async for event in run_stock_analysis(company_name):
                 # The LangGraph runner yields dicts with "event" and "data"/"state" keys
                 # sse-starlette expects a dict with "event" and "data" keys (stringified)
                 
                 # Check if it's a node_update to stringify the AgentReport payload
                 if event["event"] == "node_update":
+                    # Sanitize the payload: strip out large raw datasets to prevent json.dumps crashes
+                    safe_state = {}
+                    for k, v in event["state"].items():
+                        if k.endswith("_report") or k in ["final_decision", "confidence_score", "investment_thesis", "key_risks"]:
+                            safe_state[k] = v
+                            if k.endswith("_report"):
+                                accumulated_reports[k] = v
+                    
+                    # For caching, detect the judge node
+                    if event["node"] == "judge_node" and "final_decision" in event["state"]:
+                        # Save the final decision and accumulated reports to cache
+                        cached_payload = {
+                            "message": "Analysis Finished",
+                            "reports": accumulated_reports,
+                            "judge_report": {
+                                "final_decision": event["state"].get("final_decision", "HOLD"),
+                                "confidence_score": event["state"].get("confidence_score", 0),
+                                "investment_thesis": event["state"].get("investment_thesis", ""),
+                                "key_risks": event["state"].get("key_risks", [])
+                            }
+                        }
+                        save_analysis_to_cache(ticker, cached_payload)
+                        final_report_saved = True
+
                     yield {
                         "event": "node_update",
                         "data": json.dumps({
                             "node": event["node"],
-                            "state": event["state"]
+                            "state": safe_state
                         }, default=str) # Handle un-serializable enums/objects
                     }
                 else:

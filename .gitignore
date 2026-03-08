@@ -59,3 +59,8 @@ MANIFEST
 .pytest_cache/
 test_out.txt
 e2e_live_out.txt
+
+# Temp & Caching
+backend/.cache/
+backend/test_phase12.py
+backend/test_stream.py
