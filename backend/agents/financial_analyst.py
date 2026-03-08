@@ -63,6 +63,14 @@ CapEx:                  ₹{capex_cr} Crore
 Dividend Yield:         {dividend_yield}
 Payout Ratio:           {payout_ratio}
 
+━━━ SECTOR PEER COMPARISON ━━━
+Ticker | P/E | P/B | ROE | Rev Growth | Market Cap (Cr)
+--- | --- | --- | --- | --- | ---
+{peer_table}
+
+Sector Median P/E: {sector_median_pe}
+→ {company_name} trades at {pe_premium_discount}% {premium_or_discount} to sector median
+
 ━━━ SCREENER 10-YEAR DATA ━━━
 {screener_data_summary}
 
@@ -116,6 +124,40 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     # Helper string formats
     screener_text = json.dumps(screener, indent=2) if screener else "No Screener data."
     
+    # Peer Table & Sector Math
+    peers = fundamental.get("sector_peers", [])
+    peer_table = "No sector peer data available."
+    sector_median_pe = "N/A"
+    pe_premium_discount = "N/A"
+    premium_or_discount = ""
+    
+    if peers:
+        table_rows = []
+        pe_list = []
+        for p in peers:
+            p_pe = format_metric(p.get('pe'))
+            p_pb = format_metric(p.get('pb'))
+            p_roe = format_metric(p.get('roe'), True)
+            p_rev = format_metric(p.get('revenue_growth'), True)
+            p_cap = format_metric(p.get('market_cap_cr'))
+            table_rows.append(f"{p['ticker']} | {p_pe} | {p_pb} | {p_roe} | {p_rev} | {p_cap}")
+            if p.get('pe') is not None:
+                pe_list.append(float(p.get('pe')))
+                
+        if table_rows:
+            peer_table = "\n".join(table_rows)
+            
+        if pe_list:
+            import statistics
+            median_pe = statistics.median(pe_list)
+            sector_median_pe = f"{median_pe:.2f}"
+            
+            target_pe = fundamental.get("pe_ratio")
+            if target_pe is not None:
+                diff = ((float(target_pe) - median_pe) / median_pe) * 100
+                pe_premium_discount = f"{abs(diff):.1f}"
+                premium_or_discount = "premium" if diff > 0 else "discount"
+    
     prompt = FINANCIAL_USER_PROMPT.format(
         company_name=state["company_name"],
         ticker=state["ticker"],
@@ -153,6 +195,10 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         capex_cr=format_metric((fundamental.get("capex") or 0) / 10000000),
         dividend_yield=format_metric(fundamental.get("dividend_yield"), True),
         payout_ratio=format_metric(fundamental.get("payout_ratio"), True),
+        peer_table=peer_table,
+        sector_median_pe=sector_median_pe,
+        pe_premium_discount=pe_premium_discount,
+        premium_or_discount=premium_or_discount,
         screener_data_summary=screener_text,
         business_summary=fundamental.get("business_summary", "No description available.")
     )
