@@ -43,10 +43,10 @@ async def call_llm_with_retry(client, messages, response_format={"type": "json_o
                 return response.choices[0].message.content.strip()
             except Exception as e2:
                 if "429" in str(e2) or "rate limit" in str(e2).lower() or "tokens" in str(e2).lower():
-                    logger.warning(f"Rate limit hit for {fallback_model}. Retrying with final fallback llama3-8b-8192 in 5 seconds.")
+                    logger.warning(f"Rate limit hit for {fallback_model}. Retrying with final fallback gemma2-9b-it in 5 seconds.")
                     await asyncio.sleep(5)
                     response = await client.chat.completions.create(
-                        model='llama3-8b-8192',
+                        model='gemma2-9b-it',
                         messages=messages,
                         temperature=0.1,
                         response_format=response_format
