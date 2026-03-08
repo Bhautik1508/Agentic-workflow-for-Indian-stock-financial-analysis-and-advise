@@ -1,51 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0a0a0a;
-  --color-foreground: #ededed;
-  
+  --color-background: #040812;
+  --color-foreground: #e0e8f0;
+
   --color-primary: #00d4ff;
   --color-primary-dark: #0096b4;
   --color-secondary: #7b2fff;
   --color-secondary-dark: #5a1ec0;
   --color-accent: #00ff9f;
-  
-  --color-surface: #121212;
-  --color-surface-hover: #1c1c1c;
-  --color-border: #2a2a2a;
-  
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-  
+
+  --color-surface: #0a1628;
+  --color-surface-hover: #0f1f38;
+  --color-border: #1a2540;
+
+  --color-success: #00ff9f;
+  --color-warning: #ff9f00;
+  --color-danger: #ff4060;
+
+  --color-text-muted: #6b82a0;
+  --color-text-dim: #3a5070;
+
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #040812;
+  --foreground: #e0e8f0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ─── Base body ─── */
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  position: relative;
 }
 
-/* Base styling for scrollbar to match dark aesthetic */
+/* ─── Subtle grid overlay ─── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* ─── Scrollbar ─── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -54,9 +66,72 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-primary-dark);
+}
+
+/* ─── Utility classes ─── */
+.font-mono-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.15), 0 0 60px rgba(0, 212, 255, 0.05);
+}
+
+.glow-green {
+  box-shadow: 0 0 20px rgba(0, 255, 159, 0.15), 0 0 60px rgba(0, 255, 159, 0.05);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(255, 64, 96, 0.15), 0 0 60px rgba(255, 64, 96, 0.05);
+}
+
+.glow-gold {
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.15), 0 0 60px rgba(255, 215, 0, 0.05);
+}
+
+/* ─── Gradient text ─── */
+.text-gradient {
+  background: linear-gradient(135deg, #00d4ff 0%, #00ff9f 50%, #7b2fff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Animated pulse dots ─── */
+@keyframes pulseDot {
+
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.pulse-dot {
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+.pulse-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.pulse-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Score bar animation */
+.score-bar-fill {
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
 }
