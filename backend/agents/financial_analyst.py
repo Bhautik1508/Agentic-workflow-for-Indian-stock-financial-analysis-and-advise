@@ -88,12 +88,18 @@ Provide your analysis as JSON with this exact schema:
     "summary": "<2-3 sentence overall fundamental assessment>",
     "score": <float 0.0–10.0>,
     "confidence": <float 0.0–1.0>,
+    "signal_line": "<max 8 words: most important finding as a data statement, e.g. 'Fairly valued. ROE 18.2% sector-leading'>",
+    "data_table": [
+        {{"label": "P/E Ratio", "value": "<e.g. 22.4x>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "vs Sector", "value": "<e.g. -12% discount>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "ROE", "value": "<e.g. 18.2%>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Revenue Growth", "value": "<e.g. +22% YoY>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Debt/Equity", "value": "<e.g. 0.31>", "signal": "<positive|neutral|negative>"}}
+    ],
     "key_findings": [
         "<finding 1: valuation assessment with specific numbers>",
         "<finding 2: profitability vs sector>",
-        "<finding 3: growth trajectory>",
-        "<finding 4: balance sheet health>",
-        "<finding 5: cash flow quality>"
+        "<finding 3: growth trajectory>"
     ],
     "risk_flags": [
         "<any red flag 1>",
@@ -270,8 +276,10 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         status=AgentStatus.COMPLETE,
         summary=data.get("summary", ""),
         score=data.get("score", 5.0),
-        key_findings=data.get("key_findings", []),
-        risk_flags=data.get("risk_flags", []),
+        key_findings=data.get("key_findings", [])[:3],
+        risk_flags=data.get("risk_flags", [])[:3],
+        signal_line=data.get("signal_line", ""),
+        data_table=data.get("data_table", [])[:5],
         confidence=data.get("confidence", 0.0),
         data=data
     )

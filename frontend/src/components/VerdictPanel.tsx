@@ -1,164 +1,220 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, ArrowDown, Minus, BookOpen, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
-import type { FinalDecision } from '@/hooks/useSSE';
+import { ArrowUp, ArrowDown, Minus, Loader2 } from 'lucide-react';
+
+interface FinalDecision {
+    decision: 'BUY' | 'HOLD' | 'SELL';
+    confidence_score: number;
+    investment_thesis: string;
+    key_risks: string[];
+    key_catalysts?: string[];
+    target_price?: number;
+    stop_loss?: number;
+    agent_scores?: Record<string, number>;
+}
 
 interface VerdictPanelProps {
     decision: FinalDecision | null;
     status: string;
-    errorMessage?: string;
+    agentScores?: Record<string, number>;
 }
 
+// Desaturated signal colors — border-only badge style
 const DECISION_CONFIG = {
     BUY: {
-        color: '#00ff9f',
-        bgClass: 'bg-[#00ff9f]/5',
-        borderClass: 'border-[#00ff9f]/25',
-        glowClass: 'glow-green',
-        textClass: 'text-[#00ff9f]',
+        color: '#3d9970',
+        border: 'border-[#3d9970]/40',
+        bg: 'bg-[#3d9970]/8',
         icon: ArrowUp,
-        label: 'BUY',
     },
     SELL: {
-        color: '#ff4060',
-        bgClass: 'bg-[#ff4060]/5',
-        borderClass: 'border-[#ff4060]/25',
-        glowClass: 'glow-red',
-        textClass: 'text-[#ff4060]',
+        color: '#c0444a',
+        border: 'border-[#c0444a]/40',
+        bg: 'bg-[#c0444a]/8',
         icon: ArrowDown,
-        label: 'SELL',
     },
     HOLD: {
-        color: '#ffd700',
-        bgClass: 'bg-[#ffd700]/5',
-        borderClass: 'border-[#ffd700]/25',
-        glowClass: 'glow-gold',
-        textClass: 'text-[#ffd700]',
+        color: '#8a7a40',
+        border: 'border-[#8a7a40]/40',
+        bg: 'bg-[#8a7a40]/8',
         icon: Minus,
-        label: 'HOLD',
     },
 };
 
-function ConfidenceCircle({ score, color }: { score: number; color: string }) {
-    const pct = Math.round(score * 10); // 0-100
-    const radius = 36;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (pct / 100) * circumference;
+const AGENT_ORDER = [
+    { key: 'financial_node', label: 'Financial' },
+    { key: 'technical_node', label: 'Technical' },
+    { key: 'sentiment_node', label: 'Sentiment' },
+    { key: 'risk_node', label: 'Risk' },
+    { key: 'macro_governance_node', label: 'Macro & Gov' },
+];
 
-    return (
-        <div className="relative w-24 h-24 flex items-center justify-center">
-            <svg className="w-24 h-24 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r={radius} stroke="rgba(255,255,255,0.06)" strokeWidth="4" fill="none" />
-                <motion.circle
-                    cx="40" cy="40" r={radius}
-                    stroke={color}
-                    strokeWidth="4"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray={circumference}
-                    initial={{ strokeDashoffset: circumference }}
-                    animate={{ strokeDashoffset: offset }}
-                    transition={{ duration: 1.5, ease: 'easeOut' }}
-                />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-lg font-bold font-mono-num" style={{ color }}>{pct}%</span>
-                <span className="text-[9px] text-text-dim uppercase tracking-wider">Confidence</span>
-            </div>
-        </div>
-    );
+function scoreBarColor(score: number): string {
+    if (score >= 7) return 'rgba(61, 153, 112, 0.70)';
+    if (score >= 5) return 'rgba(138, 122, 64, 0.70)';
+    return 'rgba(192, 68, 74, 0.70)';
 }
 
-export function VerdictPanel({ decision, status, errorMessage }: VerdictPanelProps) {
-    if (status === 'error') {
-        return (
-            <div className="rounded-2xl border border-danger/30 bg-danger/5 p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
-                <AlertTriangle size={32} className="text-danger mb-4" />
-                <h3 className="text-lg font-bold text-danger mb-2">Analysis Failed</h3>
-                <p className="text-sm text-foreground/70">{errorMessage || 'An error occurred'}</p>
-            </div>
-        );
-    }
-
+export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProps) {
+    // Loading state
     if (!decision) {
         return (
-            <div className="rounded-2xl border border-border/50 bg-surface/30 p-8 text-center flex flex-col items-center justify-center min-h-[300px]">
-                <Loader2 size={28} className="text-primary/40 animate-spin mb-4" />
-                <p className="text-sm text-text-muted">Awaiting analysis...</p>
-                <div className="flex gap-1 mt-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary/40 pulse-dot" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary/40 pulse-dot" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary/40 pulse-dot" />
-                </div>
+            <div className="bg-[#0c0f19] border border-white/[0.06] rounded-xl p-6 flex flex-col items-center justify-center min-h-[200px]">
+                {status === 'error' ? (
+                    <p className="text-[11px] text-[#c0444a]/60 font-mono">Analysis failed</p>
+                ) : (
+                    <>
+                        <Loader2 size={20} className="text-[#5b8af0]/40 animate-spin mb-3" />
+                        <p className="text-[11px] text-[#5a6480] font-mono">Awaiting verdict</p>
+                        <div className="flex gap-1 mt-2">
+                            <span className="pulse-dot w-1 h-1 rounded-full bg-[#5b8af0]/40" />
+                            <span className="pulse-dot w-1 h-1 rounded-full bg-[#5b8af0]/40" />
+                            <span className="pulse-dot w-1 h-1 rounded-full bg-[#5b8af0]/40" />
+                        </div>
+                    </>
+                )}
             </div>
         );
     }
 
     const config = DECISION_CONFIG[decision.decision] || DECISION_CONFIG.HOLD;
     const DecisionIcon = config.icon;
+    const confidencePct = Math.round(decision.confidence_score * 10);
+
+    // Merge agent_scores from decision or from props
+    const scores = decision.agent_scores || agentScores || {};
 
     return (
         <AnimatePresence>
             <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-                className={`rounded-2xl border ${config.borderClass} ${config.bgClass} ${config.glowClass} p-6 relative overflow-hidden`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+                className={`bg-[#0c0f19] border ${config.border} rounded-xl p-5 overflow-hidden`}
             >
-                {/* Top glow line */}
-                <div
-                    className="absolute top-0 left-0 w-full h-[2px]"
-                    style={{ background: `linear-gradient(90deg, transparent, ${config.color}40, transparent)` }}
-                />
-
-                {/* Decision Badge */}
-                <div className="flex flex-col items-center text-center mb-6">
-                    <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-text-dim mb-3">
-                        FINAL VERDICT
-                    </p>
-                    <div className="flex items-center gap-3">
-                        <DecisionIcon size={28} className={config.textClass} />
-                        <h2
-                            className="text-5xl font-black tracking-tight"
-                            style={{ color: config.color, textShadow: `0 0 30px ${config.color}30` }}
+                {/* Decision Badge — border-only, monospace */}
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <DecisionIcon size={18} style={{ color: config.color }} />
+                        <span
+                            className="text-2xl font-bold font-mono tracking-tight"
+                            style={{ color: config.color }}
                         >
-                            {config.label}
-                        </h2>
+                            {decision.decision}
+                        </span>
+                    </div>
+                    {/* Confidence: horizontal bar + number */}
+                    <div className="flex items-center gap-2">
+                        <div className="w-20 h-[3px] rounded-full bg-white/[0.04] overflow-hidden">
+                            <motion.div
+                                className="h-full rounded-full"
+                                style={{ backgroundColor: config.color }}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${confidencePct}%` }}
+                                transition={{ duration: 0.8, ease: 'easeOut' }}
+                            />
+                        </div>
+                        <span className="font-dm-mono text-xs" style={{ color: config.color }}>
+                            {confidencePct}%
+                        </span>
                     </div>
                 </div>
 
-                {/* Confidence Circle */}
-                <div className="flex justify-center mb-6">
-                    <ConfidenceCircle score={decision.confidence_score} color={config.color} />
-                </div>
-
-                {/* Investment Thesis */}
+                {/* Thesis — accent left border */}
                 {decision.investment_thesis && (
-                    <div className="mb-5">
-                        <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2 text-text-muted uppercase tracking-wider">
-                            <BookOpen size={12} /> Thesis
-                        </h4>
-                        <p className="text-sm text-foreground/70 leading-relaxed bg-black/20 p-3 rounded-lg border border-white/5">
+                    <div className="border-l-2 border-[#5b8af0]/30 pl-3 mb-4">
+                        <p className="text-[11px] text-[#8896b3] leading-relaxed">
                             {decision.investment_thesis}
                         </p>
                     </div>
                 )}
 
-                {/* Key Risks */}
-                {decision.key_risks && decision.key_risks.length > 0 && (
-                    <div>
-                        <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2 text-warning uppercase tracking-wider">
-                            <AlertTriangle size={12} /> Key Risks
+                {/* Price Targets */}
+                {(decision.target_price || decision.stop_loss) && (
+                    <div className="flex gap-4 mb-4">
+                        {decision.target_price && (
+                            <div>
+                                <span className="text-[9px] font-mono text-[#343a4f] uppercase">Target</span>
+                                <p className="font-dm-mono text-sm text-[#dce4f5]">
+                                    ₹{decision.target_price.toLocaleString('en-IN')}
+                                </p>
+                            </div>
+                        )}
+                        {decision.stop_loss && (
+                            <div>
+                                <span className="text-[9px] font-mono text-[#343a4f] uppercase">Stop Loss</span>
+                                <p className="font-dm-mono text-sm text-[#c0444a]">
+                                    ₹{decision.stop_loss.toLocaleString('en-IN')}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Catalysts + Risks — em-dash lists, no icons */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                    {decision.key_catalysts && decision.key_catalysts.length > 0 && (
+                        <div>
+                            <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] uppercase mb-1.5">
+                                Catalysts
+                            </h4>
+                            <div className="space-y-1">
+                                {decision.key_catalysts.slice(0, 3).map((c, i) => (
+                                    <p key={i} className="text-[10px] text-[#8896b3] leading-snug">
+                                        <span className="text-[#3d9970]">— </span>{c}
+                                    </p>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {decision.key_risks && decision.key_risks.length > 0 && (
+                        <div>
+                            <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] uppercase mb-1.5">
+                                Risks
+                            </h4>
+                            <div className="space-y-1">
+                                {decision.key_risks.slice(0, 3).map((r, i) => (
+                                    <p key={i} className="text-[10px] text-[#8896b3] leading-snug">
+                                        <span className="text-[#c0444a]">— </span>{r}
+                                    </p>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Score Breakdown — inline list (replaces radar chart) */}
+                {Object.keys(scores).length > 0 && (
+                    <div className="border-t border-white/[0.04] pt-3">
+                        <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] uppercase mb-2">
+                            Score Breakdown
                         </h4>
-                        <ul className="space-y-1.5">
-                            {decision.key_risks.map((risk, i) => (
-                                <li key={i} className="text-xs text-foreground/60 flex items-start gap-2">
-                                    <span className="text-warning mt-0.5">⚠</span>
-                                    <span>{risk}</span>
-                                </li>
-                            ))}
-                        </ul>
+                        <div className="space-y-1.5">
+                            {AGENT_ORDER.map(({ key, label }) => {
+                                const score = scores[key];
+                                if (score === undefined) return null;
+                                return (
+                                    <div key={key} className="flex items-center gap-2">
+                                        <span className="text-[10px] text-[#5a6480] w-20 flex-shrink-0">
+                                            {label}
+                                        </span>
+                                        <div className="flex-1 h-1 rounded-full bg-white/[0.04] overflow-hidden">
+                                            <motion.div
+                                                className="h-full rounded-full score-bar-fill"
+                                                style={{ backgroundColor: scoreBarColor(score) }}
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${(score / 10) * 100}%` }}
+                                                transition={{ duration: 0.6, delay: 0.1 }}
+                                            />
+                                        </div>
+                                        <span className="font-dm-mono text-[10px] text-[#8896b3] w-5 text-right">
+                                            {score.toFixed(1)}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
             </motion.div>

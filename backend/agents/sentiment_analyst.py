@@ -202,12 +202,18 @@ Provide output as JSON with this exact schema:
     "summary": "<MUST include: article count + FII/DII exact numbers + base score reasoning + final score — see system prompt example>",
     "score": <float — must be a 0.5 increment, e.g. 5.5 or 6.0 or 7.5>,
     "confidence": <float 0.0–1.0 — use 0.4–0.6 when no news, 0.7–0.9 when news available>,
+    "signal_line": "<max 8 words: e.g. 'FII net bought ₹3,420 Cr. Clean news'>",
+    "data_table": [
+        {{"label": "News Volume", "value": "<e.g. 7 articles>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "FII Flow", "value": "<e.g. +₹3,420 Cr>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "DII Flow", "value": "<e.g. -₹890 Cr>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Sentiment", "value": "<e.g. Mildly positive>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Key Event", "value": "<e.g. Earnings beat>", "signal": "<positive|neutral|negative>"}}
+    ],
     "key_findings": [
         "<finding 1: news availability and volume — cite exact count>",
         "<finding 2: FII net flow with exact ₹ Crore number and interpretation>",
-        "<finding 3: DII net flow with exact ₹ Crore number and interpretation>",
-        "<finding 4: most significant news event if any, or 'no significant events'>",
-        "<finding 5: GDELT global sentiment reading>"
+        "<finding 3: DII net flow with exact ₹ Crore number and interpretation>"
     ],
     "risk_flags": [
         "<specific negative signal with data — or 'none identified' if truly absent>"
@@ -323,8 +329,10 @@ async def run_sentiment_analysis(state: StockAnalysisState) -> AgentReport:
         status       = AgentStatus.COMPLETE,
         summary      = data["summary"],
         score        = float(data["score"]),
-        key_findings = data["key_findings"],
-        risk_flags   = data.get("risk_flags", []),
+        key_findings = data["key_findings"][:3],
+        risk_flags   = data.get("risk_flags", [])[:3],
+        signal_line  = data.get("signal_line", ""),
+        data_table   = data.get("data_table", [])[:5],
         confidence   = float(data["confidence"]),
         data         = data,
     )

@@ -12,6 +12,8 @@ export interface AgentReport {
     score: number;
     key_findings: string[];
     risk_flags: string[];
+    signal_line: string;
+    data_table: Array<{ label: string; value: string; signal: string }>;
     confidence: number;
     data: unknown;
 }

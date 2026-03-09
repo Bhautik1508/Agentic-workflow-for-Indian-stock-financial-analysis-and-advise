@@ -89,6 +89,8 @@ def _fallback_report(agent_name: str, score: float, error: str) -> AgentReport:
         score=score,
         key_findings=["Data temporarily unavailable"],
         risk_flags=[],
+        signal_line="Analysis unavailable",
+        data_table=[],
         confidence=0.0,
         data={"error": error}
     )

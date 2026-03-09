@@ -19,6 +19,8 @@ class AgentReport(TypedDict):
     score: float          # 0-10 (10 = most bullish)
     key_findings: List[str]
     risk_flags: List[str]
+    signal_line: str      # ≤8 word signal for collapsed card
+    data_table: List[Dict[str, str]]  # [{label, value, signal}] max 5 rows
     data: Dict[str, Any]
     confidence: float     # 0-1
 
