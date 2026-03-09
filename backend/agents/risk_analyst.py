@@ -82,12 +82,18 @@ Provide risk assessment as JSON with this exact schema:
     "summary": "<2-3 sentence overall risk assessment>",
     "score": <float 0.0–10.0>,
     "confidence": <float 0.0–1.0>,
+    "signal_line": "<max 8 words: e.g. 'Beta 0.92. Max drawdown -18% YoY'>",
+    "data_table": [
+        {{"label": "Beta", "value": "<e.g. 0.92>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Volatility (1Y)", "value": "<e.g. 24.3%>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Max Drawdown", "value": "<e.g. -18%>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Debt/Equity", "value": "<e.g. 0.45>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Sharpe Ratio", "value": "<e.g. 1.2>", "signal": "<positive|neutral|negative>"}}
+    ],
     "key_findings": [
         "<finding 1: market risk / beta assessment>",
         "<finding 2: volatility and drawdown analysis>",
-        "<finding 3: financial leverage / debt risk>",
-        "<finding 4: liquidity and trading risk>",
-        "<finding 5: sector-specific risk factors>"
+        "<finding 3: financial leverage / debt risk>"
     ],
     "risk_flags": [
         "<specific red flag 1 with metric>",
@@ -194,8 +200,10 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         status=AgentStatus.COMPLETE,
         summary=data.get("summary", ""),
         score=data.get("score", 5.0),
-        key_findings=data.get("key_findings", []),
-        risk_flags=data.get("risk_flags", []),
+        key_findings=data.get("key_findings", [])[:3],
+        risk_flags=data.get("risk_flags", [])[:3],
+        signal_line=data.get("signal_line", ""),
+        data_table=data.get("data_table", [])[:5],
         confidence=data.get("confidence", 0.0),
         data=data
     )

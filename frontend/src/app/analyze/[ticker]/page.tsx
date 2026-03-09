@@ -2,20 +2,17 @@
 
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { use } from 'react';
-import { motion } from 'framer-motion';
-import { AgentCard } from '@/components/AgentCard';
+import { TopBar } from '@/components/analysis/TopBar';
+import { PriceChart } from '@/components/analysis/PriceChart';
+import { AnalystCard } from '@/components/analysis/AnalystCard';
 import { VerdictPanel } from '@/components/VerdictPanel';
-import { AnalystRadar } from '@/components/RadarChart';
-import { StockChart } from '@/components/StockChart';
 import { HistorySidebar } from '@/components/HistorySidebar';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
-import Link from 'next/link';
 
-const NODE_NAMES = [
+const AGENT_NODES = [
     'financial_node',
     'technical_node',
-    'sentiment_node',
     'risk_node',
+    'sentiment_node',
     'macro_governance_node',
 ];
 
@@ -25,135 +22,77 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
     const state = useAnalysis(ticker);
 
     const decodedName = decodeURIComponent(ticker);
-    const completedCount = Object.keys(state.agents).length;
-    const totalAgents = NODE_NAMES.length;
-    const isAnalyzing = state.status === 'analyzing';
     const isComplete = state.status === 'complete';
+    const isAnalyzing = state.status === 'analyzing';
+
+    // Build agent scores map for verdict panel
+    const agentScores: Record<string, number> = {};
+    for (const node of AGENT_NODES) {
+        const report = state.agents[node];
+        if (report?.score !== undefined) {
+            agentScores[node] = report.score;
+        }
+    }
+
+    // Timestamp
+    const timestamp = new Date().toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
 
     return (
         <div className="w-full min-h-screen relative z-10">
             <HistorySidebar />
+
             {/* Sticky Top Bar */}
-            <div className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-xl border-b border-border/40">
-                <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link
-                            href="/"
-                            className="text-text-dim hover:text-primary transition-colors"
-                        >
-                            <ArrowLeft size={18} />
-                        </Link>
-
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-lg font-bold tracking-tight">{decodedName}</h1>
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
-                                NSE
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        {/* Status indicator */}
-                        <div className="flex items-center gap-2">
-                            {isAnalyzing && (
-                                <>
-                                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                                    <span className="text-xs font-mono text-primary">
-                                        LIVE {completedCount}/{totalAgents}
-                                    </span>
-                                </>
-                            )}
-                            {isComplete && (
-                                <span className="text-xs font-mono text-success">
-                                    ✓ COMPLETE
-                                </span>
-                            )}
-                            {state.status === 'error' && (
-                                <span className="text-xs font-mono text-danger">
-                                    ✗ ERROR
-                                </span>
-                            )}
-                        </div>
-
-                        {/* Timestamp */}
-                        <span className="hidden md:block text-[10px] font-mono text-text-dim">
-                            {new Date().toLocaleString('en-IN', {
-                                day: '2-digit', month: 'short', year: 'numeric',
-                                hour: '2-digit', minute: '2-digit',
-                            })}
-                        </span>
-
-                        {/* Re-analyze button */}
-                        {isComplete && (
-                            <button
-                                onClick={() => window.location.reload()}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-surface border border-border hover:border-primary/40 hover:text-primary transition-all cursor-pointer"
-                            >
-                                <RefreshCw size={12} />
-                                Re-analyze
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
+            <TopBar
+                ticker={decodedName}
+                exchange="NSE"
+                timestamp={isComplete ? timestamp : undefined}
+            />
 
             {/* Main Content */}
-            <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24">
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <div className="max-w-7xl mx-auto px-4 md:px-6 py-5 pb-20">
 
-                    {/* Left Column — Agent Cards Feed (60%) */}
-                    <div className="lg:col-span-3 flex flex-col gap-3">
-                        <h2 className="text-[10px] font-mono tracking-[0.2em] text-text-dim uppercase mb-1">
-                            Agent Analysis Feed
-                        </h2>
-
-                        <div className="flex flex-col gap-3">
-                            {NODE_NAMES.map((nodeName, i) => {
-                                const report = state.agents[nodeName];
-                                const isRunning =
-                                    isAnalyzing &&
-                                    !report &&
-                                    completedCount < totalAgents;
-
-                                return (
-                                    <motion.div
-                                        key={nodeName}
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        transition={{ delay: i * 0.05 }}
-                                    >
-                                        <AgentCard
-                                            nodeName={nodeName}
-                                            report={report}
-                                            isRunning={isRunning}
-                                        />
-                                    </motion.div>
-                                );
-                            })}
-                        </div>
+                {/* Top Section: PriceChart (left) + VerdictPanel (right) */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+                    <div className="lg:col-span-3">
+                        <PriceChart ticker={decodedName} />
                     </div>
-
-                    {/* Right Column — Verdict + Radar (40%) */}
                     <div className="lg:col-span-2">
-                        <div className="sticky top-20 flex flex-col gap-4">
-                            <h2 className="text-[10px] font-mono tracking-[0.2em] text-text-dim uppercase mb-1">
-                                Final Verdict
-                            </h2>
-
+                        <div className="sticky top-14">
                             <VerdictPanel
                                 decision={state.final_decision}
                                 status={state.status}
-                                errorMessage={state.message}
+                                agentScores={agentScores}
                             />
-
-                            {/* Radar chart — shows after all agents complete */}
-                            <AnalystRadar agents={state.agents} />
-
-                            {/* Price chart */}
-                            <StockChart ticker={decodedName} />
                         </div>
                     </div>
+                </div>
 
+                {/* Analyst Cards — 2 column grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {AGENT_NODES.map((nodeName, i) => {
+                        const report = state.agents[nodeName];
+                        const isRunning = isAnalyzing && !report;
+
+                        return (
+                            <AnalystCard
+                                key={nodeName}
+                                index={i}
+                                report={{
+                                    agent_name: report?.agent_name || nodeName.replace('_node', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Analyst',
+                                    status: report ? 'complete' : isRunning ? 'running' : 'error',
+                                    score: report?.score ?? 0,
+                                    signal_line: report?.signal_line,
+                                    data_table: report?.data_table,
+                                    key_findings: report?.key_findings,
+                                    risk_flags: report?.risk_flags,
+                                    summary: report?.summary,
+                                }}
+                            />
+                        );
+                    })}
                 </div>
             </div>
         </div>

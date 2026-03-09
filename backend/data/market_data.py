@@ -174,7 +174,8 @@ async def resolve_ticker(company_name: str) -> str:
         "cipla": "CIPLA.NS", "divi's laboratories": "DIVISLAB.NS",
         "apollo hospitals": "APOLLOHOSP.NS", "bajaj finserv": "BAJAJFINSV.NS",
         "indusind bank": "INDUSINDBK.NS", "tata motors": "TATAMOTORS.NS",
-        "mahindra": "M&M.NS", "hero motocorp": "HEROMOTOCO.NS",
+        "mahindra": "M&M.NS", "mahindra and mahindra": "M&M.NS", "m&m": "M&M.NS",
+        "m and m": "M&M.NS", "hero motocorp": "HEROMOTOCO.NS",
         "hindalco": "HINDALCO.NS", "tata consumer": "TATACONSUM.NS",
         "godrej consumer": "GODREJCP.NS", "pidilite": "PIDILITIND.NS",
         "avenue supermarts": "DMART.NS", "dmart": "DMART.NS",
@@ -195,8 +196,12 @@ async def resolve_ticker(company_name: str) -> str:
         search_results = search(company_name)
         if search_results and "quotes" in search_results:
             for result in search_results["quotes"]:
+                sym = result.get("symbol", "")
+                # Skip -BL (block-deal) variants that yfinance can't resolve
+                if "-BL" in sym:
+                    continue
                 if result.get("exchange") in ["NSI", "BSI", "NSE", "BSE", "NMS"]:
-                    candidate = result["symbol"]
+                    candidate = sym
                     if await _validate_ticker(candidate):
                         return candidate
     except Exception:

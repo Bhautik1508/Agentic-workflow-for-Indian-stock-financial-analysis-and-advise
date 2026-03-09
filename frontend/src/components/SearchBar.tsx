@@ -150,8 +150,8 @@ export default function SearchBar() {
                                 }}
                                 onMouseEnter={() => setHighlightedIndex(idx)}
                                 className={`flex items-center justify-between px-5 py-3.5 cursor-pointer transition-colors group ${highlightedIndex === idx
-                                        ? 'bg-primary/8'
-                                        : 'hover:bg-white/[0.03]'
+                                    ? 'bg-primary/8'
+                                    : 'hover:bg-white/[0.03]'
                                     }`}
                             >
                                 <div className="flex items-center gap-3 min-w-0">
@@ -179,8 +179,8 @@ export default function SearchBar() {
                                     {/* Exchange badge */}
                                     <span
                                         className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${result.exchange === 'NSE'
-                                                ? 'bg-primary/15 text-primary'
-                                                : 'bg-warning/15 text-warning'
+                                            ? 'bg-primary/15 text-primary'
+                                            : 'bg-warning/15 text-warning'
                                             }`}
                                     >
                                         {result.exchange || 'NSE'}
@@ -188,8 +188,8 @@ export default function SearchBar() {
                                     <ArrowRight
                                         size={14}
                                         className={`transition-all duration-200 ${highlightedIndex === idx
-                                                ? 'text-primary translate-x-0.5'
-                                                : 'text-text-dim'
+                                            ? 'text-primary translate-x-0.5'
+                                            : 'text-text-dim'
                                             }`}
                                     />
                                 </div>

@@ -74,12 +74,18 @@ Provide macro & governance analysis as JSON with this exact schema:
     "summary": "<2-3 sentence combined macro + governance overview>",
     "score": <float 0.0–10.0>,
     "confidence": <float 0.0–1.0>,
+    "signal_line": "<max 8 words: e.g. 'RBI neutral. Promoter holding stable 50.1%'>",
+    "data_table": [
+        {{"label": "RBI Stance", "value": "<e.g. Neutral>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Promoter Hold", "value": "<e.g. 50.1%>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Pledge Risk", "value": "<e.g. None>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "INR/USD", "value": "<e.g. ₹83.2>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Insider Signal", "value": "<e.g. Neutral>", "signal": "<positive|neutral|negative>"}}
+    ],
     "key_findings": [
         "<finding 1: macro environment for this sector specifically>",
         "<finding 2: RBI/interest rate impact on this company>",
-        "<finding 3: promoter holding trend interpretation>",
-        "<finding 4: insider trading signal — what management is doing>",
-        "<finding 5: governance quality overall>"
+        "<finding 3: promoter holding trend interpretation>"
     ],
     "risk_flags": [
         "<governance red flag if any>",
@@ -186,8 +192,10 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
         status=AgentStatus.COMPLETE,
         summary=data.get("summary", ""),
         score=data.get("score", 5.0),
-        key_findings=data.get("key_findings", []),
-        risk_flags=data.get("risk_flags", []),
+        key_findings=data.get("key_findings", [])[:3],
+        risk_flags=data.get("risk_flags", [])[:3],
+        signal_line=data.get("signal_line", ""),
+        data_table=data.get("data_table", [])[:5],
         confidence=data.get("confidence", 0.0),
         data=data
     )

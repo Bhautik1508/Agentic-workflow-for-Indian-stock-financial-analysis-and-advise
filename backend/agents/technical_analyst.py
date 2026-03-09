@@ -87,12 +87,18 @@ Provide technical analysis as JSON with this exact schema:
     "summary": "<2-3 sentence overall technical assessment>",
     "score": <float 0.0–10.0>,
     "confidence": <float 0.0–1.0>,
+    "signal_line": "<max 8 words: e.g. 'Uptrend. RSI 58, above all MAs'>",
+    "data_table": [
+        {{"label": "Trend", "value": "<e.g. Uptrend>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "RSI (14)", "value": "<e.g. 58>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "MACD", "value": "<e.g. Bullish crossover>", "signal": "<positive|neutral|negative>"}},
+        {{"label": "Support", "value": "<e.g. ₹3,420>", "signal": "neutral"}},
+        {{"label": "Resistance", "value": "<e.g. ₹3,680>", "signal": "neutral"}}
+    ],
     "key_findings": [
         "<finding 1: primary trend assessment with MA alignment>",
         "<finding 2: momentum reading with RSI/MACD>",
-        "<finding 3: volume confirmation or divergence>",
-        "<finding 4: Bollinger Band position and squeeze/expansion>",
-        "<finding 5: key support/resistance levels to watch>"
+        "<finding 3: volume confirmation or divergence>"
     ],
     "risk_flags": [
         "<bearish signal or divergence to watch>",
@@ -228,8 +234,10 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         status=AgentStatus.COMPLETE,
         summary=data.get("summary", ""),
         score=data.get("score", 5.0),
-        key_findings=data.get("key_findings", []),
-        risk_flags=data.get("risk_flags", []),
+        key_findings=data.get("key_findings", [])[:3],
+        risk_flags=data.get("risk_flags", [])[:3],
+        signal_line=data.get("signal_line", ""),
+        data_table=data.get("data_table", [])[:5],
         confidence=data.get("confidence", 0.0),
         data=data
     )
