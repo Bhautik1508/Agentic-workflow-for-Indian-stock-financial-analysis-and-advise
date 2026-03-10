@@ -96,7 +96,7 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
 
                 {/* Icon + Name */}
                 <span className="text-sm mr-1">{icon}</span>
-                <span className="text-xs font-medium text-[#5a6480] whitespace-nowrap">
+                <span className="text-xs font-medium text-[#7888a5] whitespace-nowrap">
                     {agentShortName(report.agent_name)}
                 </span>
 
@@ -114,7 +114,7 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
                             Analysis unavailable
                         </span>
                     ) : (
-                        <span className="text-[11px] text-[#8896b3] truncate block font-mono">
+                        <span className="text-[11px] text-[#a0b0c8] truncate block font-mono">
                             {report.signal_line || report.summary?.slice(0, 60) || '—'}
                         </span>
                     )}
@@ -145,7 +145,7 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
                 {!isRunning && !isError && (
                     <ChevronDown
                         size={14}
-                        className={`text-[#343a4f] transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''
+                        className={`text-[#4a5270] transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''
                             }`}
                     />
                 )}
@@ -165,7 +165,7 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                 {/* Left: Data Table (3 cols) */}
                                 <div className="md:col-span-3">
-                                    <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] mb-2 uppercase">
+                                    <h4 className="text-[9px] font-mono tracking-widest text-[#4a5270] mb-2 uppercase">
                                         Key Signals
                                     </h4>
                                     <div className="space-y-0">
@@ -179,7 +179,7 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
                                                         className="w-1 h-1 rounded-full flex-shrink-0"
                                                         style={{ backgroundColor: signalDotColor(row.signal) }}
                                                     />
-                                                    <span className="text-[11px] text-[#5a6480]">
+                                                    <span className="text-[11px] text-[#7888a5]">
                                                         {row.label}
                                                     </span>
                                                 </div>
@@ -189,7 +189,7 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
                                             </div>
                                         ))}
                                         {(!report.data_table || report.data_table.length === 0) && (
-                                            <p className="text-[10px] text-[#343a4f] font-mono py-2">
+                                            <p className="text-[10px] text-[#4a5270] font-mono py-2">
                                                 No data table available
                                             </p>
                                         )}
@@ -201,12 +201,12 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
                                     {/* Key Findings */}
                                     {report.key_findings && report.key_findings.length > 0 && (
                                         <div className="mb-3">
-                                            <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] mb-2 uppercase">
+                                            <h4 className="text-[9px] font-mono tracking-widest text-[#4a5270] mb-2 uppercase">
                                                 Findings
                                             </h4>
                                             <div className="space-y-1">
                                                 {report.key_findings.slice(0, 3).map((f, i) => (
-                                                    <p key={i} className="text-[10px] text-[#8896b3] leading-relaxed">
+                                                    <p key={i} className="text-[10px] text-[#a0b0c8] leading-relaxed">
                                                         <span className="text-[#3d9970] mr-1">+</span>
                                                         {f}
                                                     </p>
@@ -218,12 +218,12 @@ export function AnalystCard({ report, index = 0 }: AnalystCardProps) {
                                     {/* Risk Flags */}
                                     {report.risk_flags && report.risk_flags.length > 0 && (
                                         <div>
-                                            <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] mb-2 uppercase">
+                                            <h4 className="text-[9px] font-mono tracking-widest text-[#4a5270] mb-2 uppercase">
                                                 Flags
                                             </h4>
                                             <div className="space-y-1">
                                                 {report.risk_flags.slice(0, 3).map((f, i) => (
-                                                    <p key={i} className="text-[10px] text-[#8896b3] leading-relaxed">
+                                                    <p key={i} className="text-[10px] text-[#a0b0c8] leading-relaxed">
                                                         <span className="text-[#c0444a] mr-1">—</span>
                                                         {f}
                                                     </p>

@@ -36,7 +36,7 @@ const COLORS = {
     sma20: 'rgba(91, 138, 240, 0.5)',
     sma50: 'rgba(180, 140, 80, 0.5)',
     grid: 'rgba(255, 255, 255, 0.03)',
-    axisText: '#343a4f',
+    axisText: '#5a6480',
     crosshair: 'rgba(255, 255, 255, 0.1)',
 };
 
@@ -50,7 +50,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
     const d = payload[0].payload;
     return (
         <div className="bg-[#111627] border border-white/[0.06] rounded-lg px-3 py-2 shadow-xl">
-            <p className="text-[10px] text-[#5a6480] mb-1.5 font-mono">{d.date}</p>
+            <p className="text-[10px] text-[#7888a5] mb-1.5 font-mono">{d.date}</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] font-mono">
                 <span className="text-[#5a6480]">O</span>
                 <span className="text-[#dce4f5] text-right">₹{d.open?.toFixed(2)}</span>
@@ -101,8 +101,8 @@ export function PriceChart({ ticker }: PriceChartProps) {
                             key={p.value}
                             onClick={() => setPeriod(p.value)}
                             className={`text-[11px] font-mono pb-1 border-b transition-all cursor-pointer ${period === p.value
-                                    ? 'text-[#5b8af0] border-[#5b8af0]'
-                                    : 'text-[#343a4f] border-transparent hover:text-[#5a6480]'
+                                ? 'text-[#5b8af0] border-[#5b8af0]'
+                                : 'text-[#343a4f] border-transparent hover:text-[#5a6480]'
                                 }`}
                         >
                             {p.label}
@@ -113,11 +113,11 @@ export function PriceChart({ ticker }: PriceChartProps) {
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1">
                         <div className="w-4 h-px" style={{ background: COLORS.sma20, borderTop: '1px dashed rgba(91,138,240,0.5)' }} />
-                        <span className="text-[9px] font-mono text-[#343a4f]">SMA20</span>
+                        <span className="text-[9px] font-mono text-[#5a6480]">SMA20</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <div className="w-4 h-px" style={{ background: COLORS.sma50, borderTop: '1px dashed rgba(180,140,80,0.5)' }} />
-                        <span className="text-[9px] font-mono text-[#343a4f]">SMA50</span>
+                        <span className="text-[9px] font-mono text-[#5a6480]">SMA50</span>
                     </div>
                 </div>
             </div>
