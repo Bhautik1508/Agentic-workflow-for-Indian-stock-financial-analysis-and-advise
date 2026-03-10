@@ -74,7 +74,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {AGENT_NODES.map((nodeName, i) => {
                         const report = state.agents[nodeName];
-                        const isRunning = isAnalyzing && !report;
+                        const inProgress = (isAnalyzing || state.status === 'initializing') && !report;
 
                         return (
                             <AnalystCard
@@ -82,7 +82,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                                 index={i}
                                 report={{
                                     agent_name: report?.agent_name || nodeName.replace('_node', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Analyst',
-                                    status: report ? 'complete' : isRunning ? 'running' : 'error',
+                                    status: report ? 'complete' : inProgress ? 'running' : 'error',
                                     score: report?.score ?? 0,
                                     signal_line: report?.signal_line,
                                     data_table: report?.data_table,
