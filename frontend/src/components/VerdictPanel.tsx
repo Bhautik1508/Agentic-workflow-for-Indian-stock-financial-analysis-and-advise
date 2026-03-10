@@ -66,7 +66,7 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                 ) : (
                     <>
                         <Loader2 size={20} className="text-[#5b8af0]/40 animate-spin mb-3" />
-                        <p className="text-[11px] text-[#5a6480] font-mono">Awaiting verdict</p>
+                        <p className="text-[11px] text-[#7888a5] font-mono">Awaiting verdict</p>
                         <div className="flex gap-1 mt-2">
                             <span className="pulse-dot w-1 h-1 rounded-full bg-[#5b8af0]/40" />
                             <span className="pulse-dot w-1 h-1 rounded-full bg-[#5b8af0]/40" />
@@ -124,7 +124,7 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                 {/* Thesis — accent left border */}
                 {decision.investment_thesis && (
                     <div className="border-l-2 border-[#5b8af0]/30 pl-3 mb-4">
-                        <p className="text-[11px] text-[#8896b3] leading-relaxed">
+                        <p className="text-[11px] text-[#a0b0c8] leading-relaxed">
                             {decision.investment_thesis}
                         </p>
                     </div>
@@ -135,7 +135,7 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                     <div className="flex gap-4 mb-4">
                         {decision.target_price && (
                             <div>
-                                <span className="text-[9px] font-mono text-[#343a4f] uppercase">Target</span>
+                                <span className="text-[9px] font-mono text-[#4a5270] uppercase">Target</span>
                                 <p className="font-dm-mono text-sm text-[#dce4f5]">
                                     ₹{decision.target_price.toLocaleString('en-IN')}
                                 </p>
@@ -143,7 +143,7 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                         )}
                         {decision.stop_loss && (
                             <div>
-                                <span className="text-[9px] font-mono text-[#343a4f] uppercase">Stop Loss</span>
+                                <span className="text-[9px] font-mono text-[#4a5270] uppercase">Stop Loss</span>
                                 <p className="font-dm-mono text-sm text-[#c0444a]">
                                     ₹{decision.stop_loss.toLocaleString('en-IN')}
                                 </p>
@@ -156,12 +156,12 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                 <div className="grid grid-cols-2 gap-3 mb-4">
                     {decision.key_catalysts && decision.key_catalysts.length > 0 && (
                         <div>
-                            <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] uppercase mb-1.5">
+                            <h4 className="text-[9px] font-mono tracking-widest text-[#4a5270] uppercase mb-1.5">
                                 Catalysts
                             </h4>
                             <div className="space-y-1">
                                 {decision.key_catalysts.slice(0, 3).map((c, i) => (
-                                    <p key={i} className="text-[10px] text-[#8896b3] leading-snug">
+                                    <p key={i} className="text-[10px] text-[#a0b0c8] leading-snug">
                                         <span className="text-[#3d9970]">— </span>{c}
                                     </p>
                                 ))}
@@ -170,12 +170,12 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                     )}
                     {decision.key_risks && decision.key_risks.length > 0 && (
                         <div>
-                            <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] uppercase mb-1.5">
+                            <h4 className="text-[9px] font-mono tracking-widest text-[#4a5270] uppercase mb-1.5">
                                 Risks
                             </h4>
                             <div className="space-y-1">
                                 {decision.key_risks.slice(0, 3).map((r, i) => (
-                                    <p key={i} className="text-[10px] text-[#8896b3] leading-snug">
+                                    <p key={i} className="text-[10px] text-[#a0b0c8] leading-snug">
                                         <span className="text-[#c0444a]">— </span>{r}
                                     </p>
                                 ))}
@@ -187,7 +187,7 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                 {/* Score Breakdown — inline list (replaces radar chart) */}
                 {Object.keys(scores).length > 0 && (
                     <div className="border-t border-white/[0.04] pt-3">
-                        <h4 className="text-[9px] font-mono tracking-widest text-[#343a4f] uppercase mb-2">
+                        <h4 className="text-[9px] font-mono tracking-widest text-[#4a5270] uppercase mb-2">
                             Score Breakdown
                         </h4>
                         <div className="space-y-1.5">
@@ -196,7 +196,7 @@ export function VerdictPanel({ decision, status, agentScores }: VerdictPanelProp
                                 if (score === undefined) return null;
                                 return (
                                     <div key={key} className="flex items-center gap-2">
-                                        <span className="text-[10px] text-[#5a6480] w-20 flex-shrink-0">
+                                        <span className="text-[10px] text-[#7888a5] w-20 flex-shrink-0">
                                             {label}
                                         </span>
                                         <div className="flex-1 h-1 rounded-full bg-white/[0.04] overflow-hidden">

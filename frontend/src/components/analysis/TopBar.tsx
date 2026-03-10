@@ -56,7 +56,7 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
                 <div className="flex items-center gap-3">
                     <Link
                         href="/"
-                        className="text-[#5a6480] hover:text-[#dce4f5] transition-colors"
+                        className="text-[#7888a5] hover:text-[#dce4f5] transition-colors"
                     >
                         <ArrowLeft size={16} />
                     </Link>
@@ -64,7 +64,7 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
                         <span className="text-sm font-semibold tracking-wide text-[#dce4f5]">
                             {decodedTicker}
                         </span>
-                        <span className="text-[9px] font-mono tracking-widest text-[#343a4f] border border-white/[0.06] rounded px-1.5 py-0.5">
+                        <span className="text-[9px] font-mono tracking-widest text-[#5a6480] border border-white/[0.08] rounded px-1.5 py-0.5">
                             {exchange}
                         </span>
                     </div>
@@ -84,8 +84,8 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
                     )}
                     {timestamp && (
                         <>
-                            <div className="w-px h-4 bg-white/[0.06]" />
-                            <span className="text-[10px] font-mono text-[#343a4f]">
+                            <div className="w-px h-4 bg-white/[0.08]" />
+                            <span className="text-[10px] font-mono text-[#5a6480]">
                                 {timestamp}
                             </span>
                         </>
