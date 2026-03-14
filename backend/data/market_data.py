@@ -430,6 +430,8 @@ async def fetch_technical_data(ticker: str, hist_df: pd.DataFrame) -> dict:
         stoch = ta.momentum.StochasticOscillator(h, l, c, window=14, smooth_window=3)
         roc_10 = ta.momentum.ROCIndicator(c, window=10).roc()
 
+        last = lambda series: round(float(series.iloc[-1]), 4) if not pd.isna(series.iloc[-1]) else None
+
         # ── Trend
         macd_ind = ta.trend.MACD(c, window_slow=26, window_fast=12, window_sign=9)
         sma_20 = ta.trend.sma_indicator(c, window=20)
@@ -465,8 +467,7 @@ async def fetch_technical_data(ticker: str, hist_df: pd.DataFrame) -> dict:
         r1 = 2 * pivot - float(recent_30["Low"].min())
         s1 = 2 * pivot - float(recent_30["High"].max())
 
-        last = lambda series: round(float(series.iloc[-1]), 4) if not pd.isna(series.iloc[-1]) else None
-        cp = last(c)
+        cp = round(float(c.iloc[-1]), 4) if not pd.isna(c.iloc[-1]) else None
 
         return {
             "current_price": cp,
