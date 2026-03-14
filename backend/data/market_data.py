@@ -61,6 +61,84 @@ async def fetch_earnings_data(ticker: str) -> dict:
         }
 
 
+async def fetch_institutional_data(ticker: str) -> dict:
+    """Fetch institutional and insider ownership data from yfinance."""
+    try:
+        stock = yf.Ticker(ticker)
+
+        # major_holders: DataFrame with 'Breakdown' as label index, 'Value' as column
+        # Keys: insidersPercentHeld, institutionsPercentHeld, institutionsFloatPercentHeld, institutionsCount
+        major_holders = stock.major_holders
+        institutional_pct = None
+        insider_pct = None
+
+        if major_holders is not None and not major_holders.empty:
+            try:
+                mh_dict = major_holders["Value"].to_dict() if "Value" in major_holders.columns else {}
+                if not mh_dict:
+                    # Try row-based old format (index is integer)
+                    for idx, row in major_holders.iterrows():
+                        desc = str(row.iloc[1]).lower() if len(row) > 1 else str(idx).lower()
+                        val_raw = row.iloc[0]
+                        try:
+                            val = float(str(val_raw).replace('%', '').strip())
+                            if 'insider' in desc:
+                                insider_pct = round(val * 100 if val < 1 else val, 2)
+                            elif 'institution' in desc and 'float' not in desc:
+                                institutional_pct = round(val * 100 if val < 1 else val, 2)
+                        except (ValueError, TypeError):
+                            pass
+                else:
+                    # New format: keys like insidersPercentHeld
+                    raw_ins = mh_dict.get("insidersPercentHeld")
+                    raw_inst = mh_dict.get("institutionsPercentHeld")
+                    if raw_ins is not None:
+                        insider_pct = round(float(raw_ins) * 100, 2)
+                    if raw_inst is not None:
+                        institutional_pct = round(float(raw_inst) * 100, 2)
+            except Exception as e:
+                print(f"major_holders parse error: {e}")
+
+        # Institutional holders: top 5 (may be empty for Indian .NS tickers on yfinance free)
+        inst_holders = stock.institutional_holders
+        top_holders = []
+
+        if inst_holders is not None and not inst_holders.empty:
+            keep_cols = [c for c in ["Holder", "Shares", "% Out"] if c in inst_holders.columns]
+            top_5 = inst_holders.head(5)[keep_cols]
+            for _, row in top_5.iterrows():
+                entry = {}
+                for col in keep_cols:
+                    val = row[col]
+                    if col == "Shares":
+                        try:
+                            entry[col] = int(val)
+                        except (ValueError, TypeError):
+                            entry[col] = str(val)
+                    elif col == "% Out":
+                        try:
+                            pct_val = float(val)
+                            # yfinance may return fraction (0.05) or already percentage (5.0)
+                            entry[col] = round(pct_val * 100 if pct_val < 1 else pct_val, 2)
+                        except (ValueError, TypeError):
+                            entry[col] = str(val)
+                    else:
+                        entry[col] = str(val)
+                top_holders.append(entry)
+
+        return {
+            "top_5_institutions": top_holders,
+            "institutional_ownership_pct": institutional_pct,
+            "insider_ownership_pct": insider_pct,
+        }
+
+    except Exception as e:
+        print(f"Institutional data fetch failed: {e}")
+        return {
+            "top_5_institutions": [],
+            "institutional_ownership_pct": None,
+            "insider_ownership_pct": None,
+        }
 
 async def fetch_news(company_name: str, ticker: str = "") -> List[Dict[str, str]]:
     """Fetch valid recent news from Marketaux (Primary), NewsAPI (Secondary), or DuckDuckGo (Fallback)."""
