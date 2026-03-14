@@ -80,6 +80,12 @@ ROE Trend (Latest):     {roe_latest}
 Full Screener Data:
 {screener_data_summary}
 
+━━━ EARNINGS QUALITY ━━━
+Next Earnings Date:          {next_earnings_date}
+Last 4 Quarters Surprise:    {earnings_surprises}%
+Avg Earnings Surprise:       {avg_earnings_surprise}%
+Beat/Miss Trend:             {beat_miss_trend}
+
 ━━━ BUSINESS DESCRIPTION ━━━
 {business_summary}
 
@@ -132,6 +138,7 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     fundamental = state.get("fundamental_data", {})
     price = state.get("price_data", {})
     screener = state.get("screener_data", {})
+    earnings = state.get("earnings_data", {})
     
     # Helper string formats
     screener_text = json.dumps(screener, indent=2) if screener else "No Screener data."
@@ -258,7 +265,11 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         roce_latest=roce_latest,
         roe_latest=roe_latest,
         screener_data_summary=screener_text,
-        business_summary=fundamental.get("business_summary", "No description available.")
+        business_summary=fundamental.get("business_summary", "No description available."),
+        next_earnings_date=earnings.get("next_earnings_date", "Unknown"),
+        earnings_surprises=", ".join([f"{s:+.2f}" for s in earnings.get("earnings_surprises_last_4q", [])]) or "No data",
+        avg_earnings_surprise=earnings.get("avg_earnings_surprise") if earnings.get("avg_earnings_surprise") is not None else "N/A",
+        beat_miss_trend=earnings.get("beat_miss_trend", "unknown").replace("_", " ").upper(),
     )
     
     text = await call_llm_with_retry(

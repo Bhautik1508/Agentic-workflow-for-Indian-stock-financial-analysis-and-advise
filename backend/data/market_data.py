@@ -4,9 +4,63 @@ import requests
 import urllib.parse
 from bs4 import BeautifulSoup
 from yahooquery import Ticker, search
+import yfinance as yf
 import os
 
 NSE_SUFFIX = ".NS"
+
+async def fetch_earnings_data(ticker: str) -> dict:
+    """Fetch quarterly earnings data, EPS surprises, and next earnings date."""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # Next earnings date
+        calendar = stock.calendar
+        next_earnings = None
+        if calendar is not None:
+            if isinstance(calendar, dict):
+                next_earnings = calendar.get("Earnings Date")
+            elif hasattr(calendar, "to_dict"):
+                cal_dict = calendar.to_dict()
+                next_earnings = cal_dict.get("Earnings Date")
+        
+        # Earnings history (actual vs estimated EPS)
+        earnings_hist = stock.earnings_history
+        
+        surprises = []
+        if earnings_hist is not None and not earnings_hist.empty:
+            for _, row in earnings_hist.iterrows():
+                actual = row.get("Reported EPS") if "Reported EPS" in row else row.get("epsActual")
+                estimate = row.get("EPS Estimate") if "EPS Estimate" in row else row.get("epsEstimate")
+                if actual is not None and estimate is not None and estimate != 0:
+                    try:
+                        surprise_pct = ((float(actual) - float(estimate)) / abs(float(estimate))) * 100
+                        surprises.append(round(surprise_pct, 2))
+                    except:
+                        pass
+        
+        last_4 = surprises[:4]
+        
+        return {
+            "next_earnings_date": str(next_earnings[0]) if isinstance(next_earnings, list) and next_earnings else str(next_earnings) if next_earnings else "Unknown",
+            "earnings_surprises_last_4q": last_4,
+            "avg_earnings_surprise": round(sum(last_4) / len(last_4), 2) if last_4 else None,
+            "beat_miss_trend": (
+                "consistently_beating" if last_4 and all(s > 0 for s in last_4)
+                else "consistently_missing" if last_4 and all(s < 0 for s in last_4)
+                else "mixed"
+            ),
+        }
+    except Exception as e:
+        print(f"Earnings data fetch failed: {e}")
+        return {
+            "next_earnings_date": "Unknown",
+            "earnings_surprises_last_4q": [],
+            "avg_earnings_surprise": None,
+            "beat_miss_trend": "unknown",
+        }
+
+
 
 async def fetch_news(company_name: str, ticker: str = "") -> List[Dict[str, str]]:
     """Fetch valid recent news from Marketaux (Primary), NewsAPI (Secondary), or DuckDuckGo (Fallback)."""
