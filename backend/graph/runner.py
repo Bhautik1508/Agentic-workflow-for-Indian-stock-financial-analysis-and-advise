@@ -6,7 +6,8 @@ from data.market_data import (
     resolve_ticker, fetch_all_market_data, fetch_news,
     fetch_gdelt_sentiment, fetch_fii_dii_data, fetch_nse_risk_signals,
     fetch_bse_governance, fetch_nse_insider_trading, fetch_world_bank_macro,
-    fetch_market_context, fetch_rbi_repo_rate, fetch_risk_data, fetch_technical_data
+    fetch_market_context, fetch_rbi_repo_rate, fetch_risk_data, fetch_technical_data,
+    fetch_earnings_data
 )
 
 async def run_stock_analysis(company_name: str):
@@ -27,13 +28,16 @@ async def run_stock_analysis(company_name: str):
     hist = market_data.get("price_data", {}).get("history", [])
     hist_df = pd.DataFrame(hist) if hist else pd.DataFrame()
     
-    yield {"event": "status", "data": "Compiling technical indicators & risk models locally..."}
+    yield {"event": "status", "data": "Compiling technical indicators, risk models & earnings data locally..."}
     
     # Provide a mock Nifty DataFrame for Beta calculations to prevent crashing if offline
     nifty_mock = hist_df.copy() if not hist_df.empty else None
     
-    risk_data = await fetch_risk_data(ticker, hist_df, nifty_mock)
-    tech_data = await fetch_technical_data(ticker, hist_df)
+    risk_data, tech_data, earnings_data = await asyncio.gather(
+        fetch_risk_data(ticker, hist_df, nifty_mock),
+        fetch_technical_data(ticker, hist_df),
+        fetch_earnings_data(ticker),
+    )
     
     yield {"event": "status", "data": "Scraping Sentiment, News & FII/DII datastreams..."}
     news_data = await fetch_news(company_name, ticker)
@@ -87,6 +91,7 @@ async def run_stock_analysis(company_name: str):
         "technical_data": tech_data,
         "macro_data": macro_data,
         "governance_data": full_gov_data,
+        "earnings_data": earnings_data,
         "run_id": "test_run_123"
     }
 
