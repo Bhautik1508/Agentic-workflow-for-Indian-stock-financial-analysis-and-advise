@@ -214,7 +214,10 @@ async def resolve_ticker(company_name: str) -> str:
     return "INVALID"
 
 import requests
+import asyncio
 from bs4 import BeautifulSoup
+import yfinance as yf
+
 
 def scrape_screener(company_slug: str) -> dict:
     """
@@ -243,13 +246,14 @@ def scrape_screener(company_slug: str) -> dict:
         result = {}
         
         # Extract company overview ratios (Market Cap, P/E, ROCE, etc.)
-        ratios_section = soup.find("section", {"id": "top-ratios"})
+        ratios_section = soup.find("ul", {"id": "top-ratios"})
         if ratios_section:
             for li in ratios_section.find_all("li"):
                 name_el = li.find("span", {"class": "name"})
                 value_el = li.find("span", {"class": "nowrap"})
                 if name_el and value_el:
                     result[name_el.text.strip()] = value_el.text.strip()
+
         
         # Extract 10-year P&L summary (Revenue, Net Profit, EPS)
         pl_section = soup.find("section", {"id": "profit-loss"})
@@ -756,6 +760,26 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
         derived_sector = ap.get("sector")
         peer_data = await fetch_sector_peers(ticker, derived_sector)
             
+        # Calculate fallback debt to equity from screener
+        final_dte = (float(fd.get("debtToEquity")) / 100) if fd.get("debtToEquity") is not None else None
+        if final_dte is None:
+            try:
+                b_key = next((k for k in screener_data.keys() if "Borrowing" in k), None)
+                e_key = next((k for k in screener_data.keys() if "Equity Capital" in k or "Share Capital" in k), None)
+                r_key = next((k for k in screener_data.keys() if "Reserves" in k), None)
+                if b_key and e_key and r_key:
+                    years = sorted(list(screener_data[b_key].keys()))
+                    if years:
+                        latest = years[-1]
+                        borr = float(str(screener_data[b_key].get(latest, "0")).replace(",", ""))
+                        eq = float(str(screener_data[e_key].get(latest, "0")).replace(",", ""))
+                        res = float(str(screener_data[r_key].get(latest, "0")).replace(",", ""))
+                        tot_eq = eq + res
+                        if tot_eq > 0:
+                            final_dte = borr / tot_eq
+            except:
+                pass
+
         # Ensure we don't throw an error if data is empty, let LLM handle partials
         result = {
             "price_data": {
@@ -794,7 +818,7 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
                 # Health
                 "total_debt": fd.get("totalDebt"),
                 "total_cash": fd.get("totalCash"),
-                "debt_to_equity": (float(fd.get("debtToEquity")) / 100) if fd.get("debtToEquity") is not None else None,
+                "debt_to_equity": final_dte,
                 "current_ratio": fd.get("currentRatio"),
                 "quick_ratio": fd.get("quickRatio"),
                 "interest_coverage": (fd.get("operatingCashflow") or 0) / (fd.get("totalDebt") or 1), # Approx via Cashflow if interestExpense missing
