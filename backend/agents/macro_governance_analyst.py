@@ -69,6 +69,13 @@ Recent Corporate Announcements (Last 30 Days):
 
 BSE/NSE Surveillance Status: {surveillance_status}
 
+━━━ INSTITUTIONAL OWNERSHIP ━━━
+Institutional Ownership: {institutional_ownership_pct}%
+Insider Ownership:        {insider_ownership_pct}%
+
+Top 5 Institutional Holders:
+{top_institutions_table}
+
 Provide macro & governance analysis as JSON with this exact schema:
 {{
     "summary": "<2-3 sentence combined macro + governance overview>",
@@ -112,6 +119,19 @@ def format_metric(val):
     try: return f"{float(val):.2f}"
     except: return str(val)
 
+def _format_institutions_table(holders: list) -> str:
+    """Format top institutional holders list into a readable table string."""
+    if not holders:
+        return "No institutional holder data available."
+    lines = ["Holder                          | Shares        | % Out"]
+    lines.append("-" * 60)
+    for h in holders:
+        name = str(h.get("Holder", "Unknown"))[:30].ljust(30)
+        shares = f"{h.get('Shares', 0):,}" if isinstance(h.get("Shares"), int) else str(h.get("Shares", "N/A"))
+        pct = f"{h.get('% Out', 'N/A')}%"
+        lines.append(f"{name} | {shares:>13} | {pct}")
+    return "\n".join(lines)
+
 @agent_with_fallback("Macro & Governance Analyst", default_score=5.0)
 async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentReport:
     """Run combined macro and governance analysis."""
@@ -121,6 +141,7 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
     macro = state.get("macro_data", {})
     gov = state.get("governance_data", {})
     nse = state.get("nse_data", {})
+    inst = state.get("institutional_data", {})
     
     # Format lists to text
     gdp_hist = "\n".join([f"{y}: {v}%" for y, v in macro.get("gdp_growth_pct", [])]) or "Unavailable"
@@ -174,7 +195,10 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
         pledge_interpretation=p_interp.upper(),
         insider_transactions_table=insider_txt,
         corporate_announcements_list=ann_txt,
-        surveillance_status=nse.get("surveillance_flag", "None")
+        surveillance_status=nse.get("surveillance_flag", "None"),
+        institutional_ownership_pct=inst.get("institutional_ownership_pct") if inst.get("institutional_ownership_pct") is not None else "N/A",
+        insider_ownership_pct=inst.get("insider_ownership_pct") if inst.get("insider_ownership_pct") is not None else "N/A",
+        top_institutions_table=_format_institutions_table(inst.get("top_5_institutions", [])),
     )
     
     text = await call_llm_with_retry(

@@ -7,7 +7,7 @@ from data.market_data import (
     fetch_gdelt_sentiment, fetch_fii_dii_data, fetch_nse_risk_signals,
     fetch_bse_governance, fetch_nse_insider_trading, fetch_world_bank_macro,
     fetch_market_context, fetch_rbi_repo_rate, fetch_risk_data, fetch_technical_data,
-    fetch_earnings_data
+    fetch_earnings_data, fetch_institutional_data
 )
 
 async def run_stock_analysis(company_name: str):
@@ -33,10 +33,11 @@ async def run_stock_analysis(company_name: str):
     # Provide a mock Nifty DataFrame for Beta calculations to prevent crashing if offline
     nifty_mock = hist_df.copy() if not hist_df.empty else None
     
-    risk_data, tech_data, earnings_data = await asyncio.gather(
+    risk_data, tech_data, earnings_data, institutional_data = await asyncio.gather(
         fetch_risk_data(ticker, hist_df, nifty_mock),
         fetch_technical_data(ticker, hist_df),
         fetch_earnings_data(ticker),
+        fetch_institutional_data(ticker),
     )
     
     yield {"event": "status", "data": "Scraping Sentiment, News & FII/DII datastreams..."}
@@ -92,6 +93,7 @@ async def run_stock_analysis(company_name: str):
         "macro_data": macro_data,
         "governance_data": full_gov_data,
         "earnings_data": earnings_data,
+        "institutional_data": institutional_data,
         "run_id": "test_run_123"
     }
 
