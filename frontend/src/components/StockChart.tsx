@@ -116,7 +116,7 @@ export function StockChart({ ticker }: StockChartProps) {
         setLoading(true);
         setError(null);
         try {
-            const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? 'https://agentic-workflow-for-indian-stock.onrender.com' : 'http://localhost:8000');
             const res = await fetch(`${API_BASE_URL}/api/price-history/${ticker}?period=${period}`);
             if (!res.ok) {
                 throw new Error('Failed to fetch price data');

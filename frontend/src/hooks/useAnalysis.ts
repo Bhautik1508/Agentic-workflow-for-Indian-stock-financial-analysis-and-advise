@@ -122,7 +122,7 @@ export function useAnalysis(ticker: string | null) {
             run_id: null,
         });
 
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? 'https://agentic-workflow-for-indian-stock.onrender.com' : 'http://127.0.0.1:8000');
         const eventSource = new EventSource(`${API_BASE_URL}/api/analyze/${encodeURIComponent(ticker)}`);
 
         // ── start ──────────────────────────────
