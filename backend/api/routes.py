@@ -2,8 +2,18 @@ from fastapi import APIRouter, HTTPException
 from sse_starlette.sse import EventSourceResponse
 from graph.runner import run_stock_analysis
 import json
+import os
 
 router = APIRouter()
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint used by Render and monitoring tools."""
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "environment": "production" if os.getenv("RENDER") else "development",
+    }
 
 @router.get("/analyze/{company_name}")
 async def analyze_stock(company_name: str):
