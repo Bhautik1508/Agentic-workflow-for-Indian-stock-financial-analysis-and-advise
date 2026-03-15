@@ -269,15 +269,11 @@ def fetch_gdelt_sentiment(company_name: str) -> dict:
 
 
 async def _validate_ticker(ticker: str) -> bool:
-    """Verifies if a ticker actually exists on Yahoo Finance and has accessible data."""
+    """Verifies if a ticker actually exists using yfinance history."""
     try:
-        t = Ticker(ticker)
-        # Using a fast, lightweight property to check validity
-        price_info = t.price
-        # Valid if price dict exists and string ticker is a key inside without an error string
-        if isinstance(price_info, dict) and ticker in price_info:
-            if isinstance(price_info[ticker], dict) and 'regularMarketPrice' in price_info[ticker]:
-                return True
+        data = yf.Ticker(ticker).history(period="5d")
+        if data is not None and not data.empty:
+            return True
         return False
     except Exception:
         return False
