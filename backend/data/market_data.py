@@ -843,54 +843,44 @@ def scrape_promoter_data(company_slug: str) -> dict:
         return {}
 
 async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
-    """Fetch advanced fundamental and price data from Yahoo Finance via yahooquery"""
+    """Fetch advanced fundamental and price data from Yahoo Finance via yfinance (reliable on cloud)"""
     try:
-        stock = Ticker(ticker)
+        stock = yf.Ticker(ticker)
         
-        # Get module dictionaries
-        summary_detail = stock.summary_detail
-        financial_data = stock.financial_data
-        price_data_mod = stock.price
-        asset_profile = stock.asset_profile
-        key_stats = stock.key_stats  # For PEG, P/S etc
+        # Fetch all needed data via yfinance
+        info = stock.info  # Rich dict with all fundamentals
         
-        # Extract dictionary for the specific ticker safely
-        sd = summary_detail.get(ticker, {}) if isinstance(summary_detail, dict) else {}
-        fd = financial_data.get(ticker, {}) if isinstance(financial_data, dict) else {}
-        pd_mod = price_data_mod.get(ticker, {}) if isinstance(price_data_mod, dict) else {}
-        ap = asset_profile.get(ticker, {}) if isinstance(asset_profile, dict) else {}
-        ks = key_stats.get(ticker, {}) if isinstance(key_stats, dict) else {}
-        
-        if isinstance(sd, str): sd = {}
-        if isinstance(fd, str): fd = {}
-        if isinstance(pd_mod, str): pd_mod = {}
-        if isinstance(ap, str): ap = {}
-        if isinstance(ks, str): ks = {}
-
         # 2 Year History
         hist_df = stock.history(period="2y")
         hist = []
-        if isinstance(hist_df, pd.DataFrame) and not hist_df.empty:
+        if hist_df is not None and not hist_df.empty:
             hist_df = hist_df.reset_index()
-            # Standardize column naming to Capitalized like yfinance output
-            if 'date' in hist_df.columns:
-                hist_df = hist_df.rename(columns={'date': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+            # Ensure Date column exists with string format
+            if 'Date' in hist_df.columns:
+                hist_df['Date'] = hist_df['Date'].astype(str)
             hist = hist_df.to_dict("records")[-252:]
-            
-        cur_price = pd_mod.get('regularMarketPrice', sd.get('previousClose', None))
-        market_cap = pd_mod.get("marketCap")
-        enterprise_val = ks.get("enterpriseValue")
         
-        # Determine exact company slug for Screener.in without .NS
+        # Extract current price
+        cur_price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+        
+        # Determine company slug for Screener.in without .NS
         c_slug = ticker.split(".")[0]
         screener_data = scrape_screener(c_slug)
         
         # Fetch sector peers Context
-        derived_sector = ap.get("sector")
+        derived_sector = info.get("sector")
         peer_data = await fetch_sector_peers(ticker, derived_sector)
-            
-        # Calculate fallback debt to equity from screener
-        final_dte = (float(fd.get("debtToEquity")) / 100) if fd.get("debtToEquity") is not None else None
+        
+        # Calculate debt to equity from yfinance info
+        final_dte = None
+        dte_raw = info.get("debtToEquity")
+        if dte_raw is not None:
+            try:
+                final_dte = float(dte_raw) / 100.0
+            except:
+                pass
+        
+        # Fallback debt to equity from screener
         if final_dte is None:
             try:
                 b_key = next((k for k in screener_data.keys() if "Borrowing" in k), None)
@@ -909,73 +899,71 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
             except:
                 pass
 
-        # Ensure we don't throw an error if data is empty, let LLM handle partials
         result = {
             "price_data": {
                 "current_price": cur_price,
-                "week_52_high": sd.get("fiftyTwoWeekHigh"),
-                "week_52_low": sd.get("fiftyTwoWeekLow"),
-                "market_cap": market_cap,
-                "avg_volume": sd.get("averageVolume"),
+                "week_52_high": info.get("fiftyTwoWeekHigh"),
+                "week_52_low": info.get("fiftyTwoWeekLow"),
+                "market_cap": info.get("marketCap"),
+                "avg_volume": info.get("averageVolume"),
                 "history": hist
             },
             "fundamental_data": {
                 # Valuation
-                "pe_ratio": sd.get("trailingPE"),
-                "forward_pe": sd.get("forwardPE"),
-                "pb_ratio": sd.get("priceToBook", ks.get('priceToBook')),
-                "ps_ratio": ks.get("priceToSalesTrailing12Months"),
-                "ev_ebitda": sd.get("enterpriseToEbitda", ks.get('enterpriseToEbitda')),
-                "peg_ratio": ks.get("pegRatio"),
-                "analyst_target_price": fd.get("targetMeanPrice"),
-                "analyst_count": fd.get("numberOfAnalystOpinions"),
-                "analyst_recommendation": fd.get("recommendationKey"),
+                "pe_ratio": info.get("trailingPE"),
+                "forward_pe": info.get("forwardPE"),
+                "pb_ratio": info.get("priceToBook"),
+                "ps_ratio": info.get("priceToSalesTrailing12Months"),
+                "ev_ebitda": info.get("enterpriseToEbitda"),
+                "peg_ratio": info.get("pegRatio"),
+                "analyst_target_price": info.get("targetMeanPrice"),
+                "analyst_count": info.get("numberOfAnalystOpinions"),
+                "analyst_recommendation": info.get("recommendationKey"),
                 
                 # Profitability
-                "roe": fd.get("returnOnEquity"),
-                "roa": fd.get("returnOnAssets"),
-                "gross_margin": fd.get("grossMargins"),
-                "operating_margins": fd.get("operatingMargins"),
-                "profit_margins": fd.get("profitMargins"),
-                "ebitda_margin": fd.get("ebitdaMargins"),
+                "roe": info.get("returnOnEquity"),
+                "roa": info.get("returnOnAssets"),
+                "gross_margin": info.get("grossMargins"),
+                "operating_margins": info.get("operatingMargins"),
+                "profit_margins": info.get("profitMargins"),
+                "ebitda_margin": info.get("ebitdaMargins"),
                 
                 # Growth
-                "revenue_growth": fd.get("revenueGrowth"),
-                "earnings_growth": fd.get("earningsGrowth"),
-                "earnings_quarterly_growth": fd.get("earningsQuarterlyGrowth"),
+                "revenue_growth": info.get("revenueGrowth"),
+                "earnings_growth": info.get("earningsGrowth"),
+                "earnings_quarterly_growth": info.get("earningsQuarterlyGrowth"),
                 
                 # Health
-                "total_debt": fd.get("totalDebt"),
-                "total_cash": fd.get("totalCash"),
+                "total_debt": info.get("totalDebt"),
+                "total_cash": info.get("totalCash"),
                 "debt_to_equity": final_dte,
-                "current_ratio": fd.get("currentRatio"),
-                "quick_ratio": fd.get("quickRatio"),
-                "interest_coverage": (fd.get("operatingCashflow") or 0) / (fd.get("totalDebt") or 1), # Approx via Cashflow if interestExpense missing
+                "current_ratio": info.get("currentRatio"),
+                "quick_ratio": info.get("quickRatio"),
+                "interest_coverage": (info.get("operatingCashflow") or 0) / (info.get("totalDebt") or 1),
                 
                 # Cashflow
-                "free_cashflow": fd.get("freeCashflow"),
-                "operating_cashflow": fd.get("operatingCashflow"),
-                "capex": None, # Complex to extract from yahooquery cleanly, LLM assumes from Screener
+                "free_cashflow": info.get("freeCashflow"),
+                "operating_cashflow": info.get("operatingCashflow"),
+                "capex": None,
 
-                "dividend_yield": sd.get("dividendYield"),
-                "payout_ratio": sd.get("payoutRatio"),
-                "beta": sd.get("beta", sd.get('beta3Year')),
-                "sector": ap.get("sector"),
-                "industry": ap.get("industry"),
-                "full_time_employees": ap.get("fullTimeEmployees"),
-                "business_summary": ap.get("longBusinessSummary"),
+                "dividend_yield": info.get("dividendYield"),
+                "payout_ratio": info.get("payoutRatio"),
+                "beta": info.get("beta"),
+                "sector": info.get("sector"),
+                "industry": info.get("industry"),
+                "full_time_employees": info.get("fullTimeEmployees"),
+                "business_summary": info.get("longBusinessSummary"),
                 "sector_peers": peer_data,
             },
             "screener_data": screener_data
         }
 
-        
-        # If API returns successfully but all keys are literally None (possible with yahooquery failing silently)
-        if result['price_data']['current_price'] is None and result['fundamental_data']['pe_ratio'] is None:
-            raise Exception("YahooQuery returned empty JSON dictionaries")
+        # Validate we got at least some data
+        if result['price_data']['current_price'] is None and not hist:
+            raise Exception(f"yfinance returned no price data for {ticker}")
             
         return result
         
     except Exception as e:
-        print(f"yahooquery fetch failed for {ticker}: {e}")
+        print(f"fetch_all_market_data failed for {ticker}: {e}")
         raise ValueError(f"Could not find valid market records for '{ticker}'. Please ensure it is a valid Indian stock symbol.")
