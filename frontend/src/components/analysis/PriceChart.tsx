@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
     ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
+import { getApiUrl } from '@/config';
 
 interface PriceRecord {
     date: string;
