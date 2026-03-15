@@ -75,7 +75,7 @@ export function PriceChart({ ticker }: PriceChartProps) {
 
     useEffect(() => {
         setLoading(true);
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? 'https://agentic-workflow-for-indian-stock.onrender.com' : 'http://127.0.0.1:8000');
+        const API_BASE_URL = getApiUrl();
         fetch(`${API_BASE_URL}/api/price-history/${ticker}?period=${period}`)
             .then((r) => r.json())
             .then((json) => {

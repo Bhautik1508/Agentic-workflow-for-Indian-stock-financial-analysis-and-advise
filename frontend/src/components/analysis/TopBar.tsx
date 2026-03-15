@@ -24,7 +24,7 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
     useEffect(() => {
         async function fetchPrice() {
             try {
-                const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? 'https://agentic-workflow-for-indian-stock.onrender.com' : 'http://127.0.0.1:8000');
+                const API_BASE_URL = getApiUrl();
                 const res = await fetch(`${API_BASE_URL}/api/price-history/${ticker}?period=5d`);
                 const data = await res.json();
                 if (data.data && data.data.length >= 2) {
