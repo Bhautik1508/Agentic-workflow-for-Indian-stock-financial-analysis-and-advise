@@ -109,14 +109,18 @@ export function StockChart({ ticker }: StockChartProps) {
     const [period, setPeriod] = useState('1y');
     const [data, setData] = useState<PriceRecord[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [error, setError] = useState<string | null>('');
 
-    const fetchData = useCallback(async () => {
+    const fetchChartData = useCallback(async () => {
+        if (!ticker) return;
         setLoading(true);
-        setError('');
+        setError(null);
         try {
-            const res = await fetch(`http://localhost:8000/api/price-history/${ticker}?period=${period}`);
-            if (!res.ok) throw new Error('Failed to fetch price data');
+            const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const res = await fetch(`${API_BASE_URL}/api/price-history/${ticker}?period=${period}`);
+            if (!res.ok) {
+                throw new Error('Failed to fetch price data');
+            }
             const json = await res.json();
             setData(json.data || []);
         } catch (err: unknown) {
@@ -128,8 +132,20 @@ export function StockChart({ ticker }: StockChartProps) {
     }, [ticker, period]);
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        fetchChartData();
+    }, [ticker, period, fetchChartData]);
+
+    useEffect(() => {
+        const handleRefresh = (e: CustomEvent) => {
+            if (e.detail === ticker) {
+                fetchChartData();
+            }
+        };
+        window.addEventListener('refresh-stock-data', handleRefresh as EventListener);
+        return () => {
+            window.removeEventListener('refresh-stock-data', handleRefresh as EventListener);
+        };
+    }, [ticker, fetchChartData]);
 
     return (
         <div className="rounded-2xl border border-border/50 bg-surface/30 p-4">

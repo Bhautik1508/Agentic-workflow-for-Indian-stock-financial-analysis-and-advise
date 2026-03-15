@@ -44,8 +44,9 @@ export default function SearchBar() {
 
             if (query.trim()) {
                 try {
+                    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
                     const res = await fetch(
-                        `http://localhost:8000/api/search/${encodeURIComponent(query)}`
+                        `${API_BASE_URL}/api/search/${encodeURIComponent(query)}`
                     );
                     if (res.ok) {
                         const data = await res.json();
