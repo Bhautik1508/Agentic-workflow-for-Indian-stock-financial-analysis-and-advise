@@ -11,7 +11,7 @@ async def health_check():
     """Health check endpoint used by Render and monitoring tools."""
     return {
         "status": "ok",
-        "version": "1.0.0",
+        "version": "1.0.2-yfinance-fix",
         "environment": "production" if os.getenv("RENDER") else "development",
     }
 
@@ -176,3 +176,29 @@ async def get_price_history(ticker: str, period: str = "1y"):
 @router.get("/health")
 async def health():
     return {"status": "ok", "message": "Backend is running"}
+
+@router.get("/debug/data")
+async def debug_data_fetch(ticker: str = "TCS.NS"):
+    """Diagnostic endpoint: tests yfinance data fetching directly and returns raw result or traceback."""
+    import traceback
+    import yfinance as yf
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        hist = stock.history(period="5d")
+        return {
+            "success": True,
+            "ticker": ticker,
+            "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
+            "pe_ratio": info.get("trailingPE"),
+            "sector": info.get("sector"),
+            "history_rows": len(hist),
+            "info_keys_count": len(info)
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "ticker": ticker,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
