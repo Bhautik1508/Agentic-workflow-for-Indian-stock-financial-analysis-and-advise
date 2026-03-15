@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { getApiUrl } from '@/config';
 
 export interface SearchResult {
     name: string;
@@ -31,7 +32,7 @@ export function useStockSearch() {
             abortRef.current = controller;
 
             try {
-                const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? 'https://agentic-workflow-for-indian-stock.onrender.com' : 'http://localhost:8000');
+                const API_BASE_URL = getApiUrl();
                 const response = await fetch(
                     `${API_BASE_URL}/api/search/${encodeURIComponent(query.trim())}`,
                     { signal: controller.signal }

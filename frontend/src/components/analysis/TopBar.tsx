@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { getApiUrl } from '@/config';
 
 interface TopBarProps {
     ticker: string;

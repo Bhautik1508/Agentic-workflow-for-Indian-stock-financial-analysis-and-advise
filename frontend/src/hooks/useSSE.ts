@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '@/config';
 
 export type AgentStatus = 'pending' | 'running' | 'complete' | 'error';
 
@@ -39,7 +40,7 @@ export function useSSE(ticker: string | null) {
         if (!ticker) return;
 
         // Connect to FastAPI SSE endpoint
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? 'https://agentic-workflow-for-indian-stock.onrender.com' : 'http://127.0.0.1:8000');
+        const API_BASE_URL = getApiUrl();
         const eventSource = new EventSource(`${API_BASE_URL}/api/analyze/${encodeURIComponent(ticker)}`);
 
         eventSource.addEventListener('start', (e) => {
