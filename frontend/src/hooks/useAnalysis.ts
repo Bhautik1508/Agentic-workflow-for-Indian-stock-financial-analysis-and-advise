@@ -122,7 +122,8 @@ export function useAnalysis(ticker: string | null) {
             run_id: null,
         });
 
-        const eventSource = new EventSource(`http://127.0.0.1:8000/api/analyze/${ticker}`);
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        const eventSource = new EventSource(`${API_BASE_URL}/api/analyze/${encodeURIComponent(ticker)}`);
 
         // ── start ──────────────────────────────
         eventSource.addEventListener('start', (e) => {

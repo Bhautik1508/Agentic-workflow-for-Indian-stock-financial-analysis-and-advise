@@ -74,7 +74,8 @@ export function PriceChart({ ticker }: PriceChartProps) {
 
     useEffect(() => {
         setLoading(true);
-        fetch(`http://127.0.0.1:8000/api/price-history/${ticker}?period=${period}`)
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        fetch(`${API_BASE_URL}/api/price-history/${ticker}?period=${period}`)
             .then((r) => r.json())
             .then((json) => {
                 setData(json.data || []);
