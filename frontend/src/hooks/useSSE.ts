@@ -39,7 +39,8 @@ export function useSSE(ticker: string | null) {
         if (!ticker) return;
 
         // Connect to FastAPI SSE endpoint
-        const eventSource = new EventSource(`http://127.0.0.1:8000/api/analyze/${ticker}`);
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        const eventSource = new EventSource(`${API_BASE_URL}/api/analyze/${encodeURIComponent(ticker)}`);
 
         eventSource.addEventListener('start', (e) => {
             const data = JSON.parse(e.data);
