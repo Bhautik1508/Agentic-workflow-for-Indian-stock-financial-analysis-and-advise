@@ -752,7 +752,7 @@ async def fetch_bse_governance(bse_code: str) -> dict:
 async def fetch_sector_peers(ticker: str, sector: str, max_peers: int = 5) -> list[dict]:
     """
     Fetch key metrics for top 5 sector peers for comparison.
-    Use yfinance to get P/E, P/B, ROE for each peer.
+    Gracefully handles Yahoo Finance rate-limiting on cloud IPs.
     """
     if not sector: return []
     
@@ -770,21 +770,25 @@ async def fetch_sector_peers(ticker: str, sector: str, max_peers: int = 5) -> li
     peers = [t for t in SECTOR_PEERS.get(sector, []) if t != ticker][:max_peers]
     
     result = []
-    # yf.Ticker is synchronous, wrap in to_thread since this is an async function
     for peer in peers:
         try:
-            info = await asyncio.to_thread(lambda p: yf.Ticker(p).info, peer)
-            result.append({
-                "ticker": peer,
-                "pe": info.get("trailingPE"),
-                "pb": info.get("priceToBook"),
-                "roe": info.get("returnOnEquity"),
-                "market_cap_cr": round((info.get("marketCap") or 0) / 1e7, 0) if info.get("marketCap") else None,
-                "revenue_growth": info.get("revenueGrowth"),
-            })
+            # Try fast_info first (lighter, less likely to be rate-limited)
+            peer_stock = yf.Ticker(peer)
+            try:
+                fi = peer_stock.fast_info
+                result.append({
+                    "ticker": peer,
+                    "pe": None,  # fast_info doesn't have P/E
+                    "pb": None,
+                    "roe": None,
+                    "market_cap_cr": round(fi.market_cap / 1e7, 0) if fi.market_cap else None,
+                    "revenue_growth": None,
+                })
+            except Exception:
+                # If even fast_info fails, skip this peer silently
+                pass
         except Exception as e:
             print(f"Failed to fetch peer {peer}: {e}")
-            pass
     return result
 
 async def fetch_nse_insider_trading(symbol: str) -> list:
@@ -842,128 +846,260 @@ def scrape_promoter_data(company_slug: str) -> dict:
         print(f"Screener Promoter fetch failed: {e}")
         return {}
 
-async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
-    """Fetch advanced fundamental and price data from Yahoo Finance via yfinance (reliable on cloud)"""
+def _safe_float(val, default=None):
+    """Safely convert a value to float."""
+    if val is None:
+        return default
     try:
-        stock = yf.Ticker(ticker)
-        
-        # Fetch all needed data via yfinance
-        info = stock.info  # Rich dict with all fundamentals
-        
-        # 2 Year History
+        s = str(val).replace(",", "").replace("%", "").strip()
+        if not s or s == "--":
+            return default
+        return float(s)
+    except (ValueError, TypeError):
+        return default
+
+
+def _extract_fundamentals_from_screener(screener_data: dict) -> dict:
+    """Extract fundamental metrics from Screener.in data to substitute for Yahoo info."""
+    fundamentals = {}
+
+    # --- Top ratios section (keys like "Market Cap", "Stock P/E", "ROCE", etc.) ---
+    fundamentals["pe_ratio"] = _safe_float(screener_data.get("Stock P/E"))
+    fundamentals["pb_ratio"] = _safe_float(screener_data.get("Price to book value"))
+    fundamentals["dividend_yield"] = _safe_float(screener_data.get("Dividend Yield"))
+    if fundamentals["dividend_yield"] is not None:
+        fundamentals["dividend_yield"] = fundamentals["dividend_yield"] / 100.0
+    fundamentals["roce"] = _safe_float(screener_data.get("ROCE"))
+    fundamentals["roe_latest"] = _safe_float(screener_data.get("ROE"))
+
+    mktcap_str = screener_data.get("Market Cap")
+    if mktcap_str:
+        try:
+            mktcap_cr = float(str(mktcap_str).replace(",", "").strip())
+            fundamentals["market_cap"] = mktcap_cr * 1e7   # Cr → raw number
+        except (ValueError, TypeError):
+            pass
+
+    # --- Profit & Loss section ---
+    def _latest_val(row_key):
+        row = screener_data.get(row_key, {})
+        if not isinstance(row, dict) or not row:
+            return None
+        years = sorted(row.keys())
+        if years:
+            return _safe_float(row[years[-1]])
+        return None
+
+    def _yoy_growth(row_key):
+        row = screener_data.get(row_key, {})
+        if not isinstance(row, dict) or len(row) < 2:
+            return None
+        years = sorted(row.keys())
+        cur = _safe_float(row[years[-1]])
+        prev = _safe_float(row[years[-2]])
+        if cur is not None and prev is not None and prev != 0:
+            return (cur - prev) / abs(prev)
+        return None
+
+    fundamentals["revenue_growth"] = _yoy_growth("pl_Sales")
+    fundamentals["earnings_growth"] = _yoy_growth("pl_Net Profit")
+
+    net_profit = _latest_val("pl_Net Profit")
+    revenue = _latest_val("pl_Sales")
+    if net_profit is not None and revenue is not None and revenue != 0:
+        fundamentals["profit_margins"] = net_profit / revenue
+
+    opm = _latest_val("pl_OPM")
+    if opm is not None:
+        fundamentals["operating_margins"] = opm / 100.0
+
+    # --- Ratios section ---
+    fundamentals["roe"] = None
+    roe_row = screener_data.get("ratio_Return on Equity", screener_data.get("ratio_ROE", {}))
+    if isinstance(roe_row, dict) and roe_row:
+        years = sorted(roe_row.keys())
+        val = _safe_float(roe_row[years[-1]])
+        if val is not None:
+            fundamentals["roe"] = val / 100.0
+
+    # --- Balance Sheet section ---
+    debt_key = next((k for k in screener_data if "Borrowing" in k), None)
+    eq_key = next((k for k in screener_data if "Equity Capital" in k or "Share Capital" in k), None)
+    res_key = next((k for k in screener_data if "Reserves" in k), None)
+    
+    total_debt = _latest_val(debt_key) if debt_key else None
+    total_equity = None
+    if eq_key and res_key:
+        eq_val = _latest_val(eq_key)
+        res_val = _latest_val(res_key)
+        if eq_val is not None and res_val is not None:
+            total_equity = eq_val + res_val
+
+    if total_debt is not None:
+        fundamentals["total_debt"] = total_debt * 1e7  # Cr → raw
+    if total_debt is not None and total_equity and total_equity > 0:
+        fundamentals["debt_to_equity"] = total_debt / total_equity
+
+    return fundamentals
+
+
+async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
+    """
+    Fetch market data using a multi-layer fallback strategy.
+    Layer 1: yfinance stock.info (fast, but rate-limited on cloud IPs)
+    Layer 2: yfinance fast_info + history (lighter endpoints, usually not rate-limited)
+    Layer 3: Screener.in scraping (always works, India-specific)
+    """
+    stock = yf.Ticker(ticker)
+    info = {}         # Will hold Yahoo info dict if available
+    hist = []
+    hist_df = pd.DataFrame()
+
+    # ── STEP 1: Price history (most reliable, never rate-limited) ──
+    try:
         hist_df = stock.history(period="2y")
-        hist = []
         if hist_df is not None and not hist_df.empty:
-            hist_df = hist_df.reset_index()
-            # Ensure Date column exists with string format
-            if 'Date' in hist_df.columns:
-                hist_df['Date'] = hist_df['Date'].astype(str)
-            hist = hist_df.to_dict("records")[-252:]
-        
-        # Extract current price
-        cur_price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
-        
-        # Determine company slug for Screener.in without .NS
-        c_slug = ticker.split(".")[0]
-        screener_data = scrape_screener(c_slug)
-        
-        # Fetch sector peers Context
-        derived_sector = info.get("sector")
-        peer_data = await fetch_sector_peers(ticker, derived_sector)
-        
-        # Calculate debt to equity from yfinance info
-        final_dte = None
-        dte_raw = info.get("debtToEquity")
-        if dte_raw is not None:
-            try:
-                final_dte = float(dte_raw) / 100.0
-            except:
-                pass
-        
-        # Fallback debt to equity from screener
-        if final_dte is None:
-            try:
-                b_key = next((k for k in screener_data.keys() if "Borrowing" in k), None)
-                e_key = next((k for k in screener_data.keys() if "Equity Capital" in k or "Share Capital" in k), None)
-                r_key = next((k for k in screener_data.keys() if "Reserves" in k), None)
-                if b_key and e_key and r_key:
-                    years = sorted(list(screener_data[b_key].keys()))
-                    if years:
-                        latest = years[-1]
-                        borr = float(str(screener_data[b_key].get(latest, "0")).replace(",", ""))
-                        eq = float(str(screener_data[e_key].get(latest, "0")).replace(",", ""))
-                        res = float(str(screener_data[r_key].get(latest, "0")).replace(",", ""))
-                        tot_eq = eq + res
-                        if tot_eq > 0:
-                            final_dte = borr / tot_eq
-            except:
-                pass
-
-        result = {
-            "price_data": {
-                "current_price": cur_price,
-                "week_52_high": info.get("fiftyTwoWeekHigh"),
-                "week_52_low": info.get("fiftyTwoWeekLow"),
-                "market_cap": info.get("marketCap"),
-                "avg_volume": info.get("averageVolume"),
-                "history": hist
-            },
-            "fundamental_data": {
-                # Valuation
-                "pe_ratio": info.get("trailingPE"),
-                "forward_pe": info.get("forwardPE"),
-                "pb_ratio": info.get("priceToBook"),
-                "ps_ratio": info.get("priceToSalesTrailing12Months"),
-                "ev_ebitda": info.get("enterpriseToEbitda"),
-                "peg_ratio": info.get("pegRatio"),
-                "analyst_target_price": info.get("targetMeanPrice"),
-                "analyst_count": info.get("numberOfAnalystOpinions"),
-                "analyst_recommendation": info.get("recommendationKey"),
-                
-                # Profitability
-                "roe": info.get("returnOnEquity"),
-                "roa": info.get("returnOnAssets"),
-                "gross_margin": info.get("grossMargins"),
-                "operating_margins": info.get("operatingMargins"),
-                "profit_margins": info.get("profitMargins"),
-                "ebitda_margin": info.get("ebitdaMargins"),
-                
-                # Growth
-                "revenue_growth": info.get("revenueGrowth"),
-                "earnings_growth": info.get("earningsGrowth"),
-                "earnings_quarterly_growth": info.get("earningsQuarterlyGrowth"),
-                
-                # Health
-                "total_debt": info.get("totalDebt"),
-                "total_cash": info.get("totalCash"),
-                "debt_to_equity": final_dte,
-                "current_ratio": info.get("currentRatio"),
-                "quick_ratio": info.get("quickRatio"),
-                "interest_coverage": (info.get("operatingCashflow") or 0) / (info.get("totalDebt") or 1),
-                
-                # Cashflow
-                "free_cashflow": info.get("freeCashflow"),
-                "operating_cashflow": info.get("operatingCashflow"),
-                "capex": None,
-
-                "dividend_yield": info.get("dividendYield"),
-                "payout_ratio": info.get("payoutRatio"),
-                "beta": info.get("beta"),
-                "sector": info.get("sector"),
-                "industry": info.get("industry"),
-                "full_time_employees": info.get("fullTimeEmployees"),
-                "business_summary": info.get("longBusinessSummary"),
-                "sector_peers": peer_data,
-            },
-            "screener_data": screener_data
-        }
-
-        # Validate we got at least some data
-        if result['price_data']['current_price'] is None and not hist:
-            raise Exception(f"yfinance returned no price data for {ticker}")
-            
-        return result
-        
+            tmp = hist_df.reset_index()
+            if 'Date' in tmp.columns:
+                tmp['Date'] = tmp['Date'].astype(str)
+            hist = tmp.to_dict("records")[-252:]
     except Exception as e:
-        print(f"fetch_all_market_data failed for {ticker}: {e}")
-        raise ValueError(f"Could not find valid market records for '{ticker}'. Please ensure it is a valid Indian stock symbol.")
+        print(f"history() failed for {ticker}: {e}")
+
+    # ── STEP 2: Try stock.info (may fail with YFRateLimitError) ──
+    try:
+        info = stock.info or {}
+        # Validate it actually returned data (not just symbol echo)
+        if len(info) < 5:
+            info = {}
+    except Exception as e:
+        print(f"stock.info rate-limited for {ticker}: {e}. Falling back to fast_info + Screener.")
+        info = {}
+
+    # ── STEP 3: fast_info fallback for price/market cap ──
+    cur_price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+    market_cap = info.get("marketCap")
+    fifty_two_high = info.get("fiftyTwoWeekHigh")
+    fifty_two_low = info.get("fiftyTwoWeekLow")
+    avg_volume = info.get("averageVolume")
+
+    if cur_price is None:
+        try:
+            fi = stock.fast_info
+            cur_price = fi.last_price
+            market_cap = market_cap or fi.market_cap
+            fifty_two_high = fifty_two_high or fi.year_high
+            fifty_two_low = fifty_two_low or fi.year_low
+        except Exception as e:
+            print(f"fast_info failed for {ticker}: {e}")
+
+    # Last resort: get price from history
+    if cur_price is None and hist:
+        last_record = hist[-1]
+        cur_price = last_record.get("Close")
+
+    # ── STEP 4: Screener.in data (always works, not Yahoo-dependent) ──
+    c_slug = ticker.split(".")[0]
+    screener_data = scrape_screener(c_slug)
+    screener_fundamentals = _extract_fundamentals_from_screener(screener_data)
+
+    # ── STEP 5: Merge fundamentals (Yahoo info preferred, Screener fallback) ──
+    def _pick(yahoo_key, screener_key=None):
+        """Return Yahoo value if available, else Screener value."""
+        val = info.get(yahoo_key)
+        if val is not None:
+            return val
+        if screener_key:
+            return screener_fundamentals.get(screener_key)
+        return None
+
+    market_cap = market_cap or screener_fundamentals.get("market_cap")
+
+    # Sector peers (skip if Yahoo info is rate-limited to avoid more rate limits)
+    derived_sector = info.get("sector")
+    peer_data = []
+    if derived_sector:
+        try:
+            peer_data = await fetch_sector_peers(ticker, derived_sector)
+        except Exception:
+            pass
+
+    # Debt to equity
+    final_dte = None
+    dte_raw = info.get("debtToEquity")
+    if dte_raw is not None:
+        try:
+            final_dte = float(dte_raw) / 100.0
+        except:
+            pass
+    if final_dte is None:
+        final_dte = screener_fundamentals.get("debt_to_equity")
+
+    result = {
+        "price_data": {
+            "current_price": cur_price,
+            "week_52_high": fifty_two_high,
+            "week_52_low": fifty_two_low,
+            "market_cap": market_cap,
+            "avg_volume": avg_volume,
+            "history": hist
+        },
+        "fundamental_data": {
+            # Valuation
+            "pe_ratio": _pick("trailingPE", "pe_ratio"),
+            "forward_pe": _pick("forwardPE"),
+            "pb_ratio": _pick("priceToBook", "pb_ratio"),
+            "ps_ratio": _pick("priceToSalesTrailing12Months"),
+            "ev_ebitda": _pick("enterpriseToEbitda"),
+            "peg_ratio": _pick("pegRatio"),
+            "analyst_target_price": _pick("targetMeanPrice"),
+            "analyst_count": _pick("numberOfAnalystOpinions"),
+            "analyst_recommendation": _pick("recommendationKey"),
+
+            # Profitability
+            "roe": _pick("returnOnEquity", "roe"),
+            "roa": _pick("returnOnAssets"),
+            "gross_margin": _pick("grossMargins"),
+            "operating_margins": _pick("operatingMargins", "operating_margins"),
+            "profit_margins": _pick("profitMargins", "profit_margins"),
+            "ebitda_margin": _pick("ebitdaMargins"),
+
+            # Growth
+            "revenue_growth": _pick("revenueGrowth", "revenue_growth"),
+            "earnings_growth": _pick("earningsGrowth", "earnings_growth"),
+            "earnings_quarterly_growth": _pick("earningsQuarterlyGrowth"),
+
+            # Health
+            "total_debt": _pick("totalDebt") or screener_fundamentals.get("total_debt"),
+            "total_cash": _pick("totalCash"),
+            "debt_to_equity": final_dte,
+            "current_ratio": _pick("currentRatio"),
+            "quick_ratio": _pick("quickRatio"),
+            "interest_coverage": ((_pick("operatingCashflow") or 0) / (_pick("totalDebt") or 1))
+                                 if _pick("totalDebt") else None,
+
+            # Cashflow
+            "free_cashflow": _pick("freeCashflow"),
+            "operating_cashflow": _pick("operatingCashflow"),
+            "capex": None,
+
+            "dividend_yield": _pick("dividendYield", "dividend_yield"),
+            "payout_ratio": _pick("payoutRatio"),
+            "beta": _pick("beta"),
+            "sector": _pick("sector"),
+            "industry": _pick("industry"),
+            "full_time_employees": _pick("fullTimeEmployees"),
+            "business_summary": _pick("longBusinessSummary"),
+            "sector_peers": peer_data,
+        },
+        "screener_data": screener_data
+    }
+
+    # ── Validate: we MUST have at least price or history ──
+    if result['price_data']['current_price'] is None and not hist:
+        raise ValueError(
+            f"Could not find valid market records for '{ticker}'. "
+            "Please ensure it is a valid Indian stock symbol."
+        )
+
+    return result
