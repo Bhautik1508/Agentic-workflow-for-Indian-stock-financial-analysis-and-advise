@@ -207,11 +207,17 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     else:
         peers = peer_data.get("peers", [])
         peer_count = peer_data.get("peer_count", len(peers))
-        sector_med_pe = peer_data.get("sector_median_pe", "N/A")
-        sector_med_pb = peer_data.get("sector_median_pb", "N/A")
-        sector_med_roe = peer_data.get("sector_median_roe", "N/A")
-        if sector_med_roe != "N/A":
+        sector_med_pe = peer_data.get("sector_median_pe")
+        sector_med_pe = sector_med_pe if sector_med_pe is not None else "N/A"
+        
+        sector_med_pb = peer_data.get("sector_median_pb")
+        sector_med_pb = sector_med_pb if sector_med_pb is not None else "N/A"
+        
+        sector_med_roe = peer_data.get("sector_median_roe")
+        if sector_med_roe is not None and sector_med_roe != "N/A":
             sector_med_roe = f"{float(sector_med_roe) * 100:.2f}"
+        else:
+            sector_med_roe = "N/A"
             
     peer_table_rows = "No sector peer data available."
     
