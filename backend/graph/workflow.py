@@ -16,7 +16,15 @@ async def run_parallel_analysts(state: StockAnalysisState) -> StockAnalysisState
         run_technical_analysis(state),
         run_macro_governance_analysis(state),
     ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    results = []
+    # Run sequentially to prevent Groq API TPM/RPM limits for large prompts
+    for task in tasks:
+        try:
+            res = await task
+        except Exception as e:
+            res = e
+        results.append(res)
+        await asyncio.sleep(1) # Small buffer between requests to let token buckets refill
     
     keys = ["financial_report", "sentiment_report", "risk_report",
             "technical_report", "macro_governance_report"]

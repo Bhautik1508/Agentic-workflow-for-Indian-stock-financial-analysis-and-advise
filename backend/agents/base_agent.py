@@ -17,6 +17,7 @@ def get_llm():
     return AsyncGroq(api_key=api_key)
 
 import asyncio
+import random
 
 async def call_llm_with_retry(client, messages, response_format={"type": "json_object"}, primary_model='llama-3.3-70b-versatile', fallback_model='llama-3.1-8b-instant'):
     """Calls Groq API with robust fallback to a smaller model on Rate Limit (429) errors."""
@@ -30,8 +31,10 @@ async def call_llm_with_retry(client, messages, response_format={"type": "json_o
         return response.choices[0].message.content.strip()
     except Exception as e:
         if "429" in str(e) or "rate limit" in str(e).lower() or "tokens" in str(e).lower():
-            logger.warning(f"Rate limit hit for {primary_model}. Retrying with {fallback_model} in 3 seconds.")
-            await asyncio.sleep(3)
+            # Add random jitter to stagger the 5 parallel agents
+            delay1 = random.uniform(3.0, 7.0)
+            logger.warning(f"Rate limit hit for {primary_model}. Retrying with {fallback_model} in {delay1:.1f} seconds.")
+            await asyncio.sleep(delay1)
             try:
                 # Try with fallback
                 response = await client.chat.completions.create(
@@ -43,8 +46,9 @@ async def call_llm_with_retry(client, messages, response_format={"type": "json_o
                 return response.choices[0].message.content.strip()
             except Exception as e2:
                 if "429" in str(e2) or "rate limit" in str(e2).lower() or "tokens" in str(e2).lower():
-                    logger.warning(f"Rate limit hit for {fallback_model}. Retrying with {fallback_model} again after 10 second cooldown.")
-                    await asyncio.sleep(10)
+                    delay2 = random.uniform(10.0, 20.0)
+                    logger.warning(f"Rate limit hit for {fallback_model}. Retrying again after {delay2:.1f} second cooldown.")
+                    await asyncio.sleep(delay2)
                     response = await client.chat.completions.create(
                         model=fallback_model,
                         messages=messages,
