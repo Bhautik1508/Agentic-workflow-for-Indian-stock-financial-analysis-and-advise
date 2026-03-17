@@ -40,26 +40,37 @@ CPI Inflation:
 {cpi_inflation_history}
 
 RBI Repo Rate:    {repo_rate}%  (Last change: {last_rate_change}, Stance: {rbi_stance})
-INR vs USD:       ₹{usdinr_current}  (1-month change: {usdinr_1m_change}%)
 
-Market Indices (1-month performance):
-  Nifty 50:       {nifty50_current}  ({nifty50_1m_change}%)
-  Nifty Bank:     {nifty_bank_1m_change}%
-  Sector Index:   {sector_index_1m_change}%
+━━━ BROADER MARKET MACRO ━━━
+Market Regime:       {market_regime}
+India VIX:           {vix_current} ({fear_level})
+USD/INR:             {usdinr_current} ({usdinr_1m_change}% 1M)
+  → Strong INR (appreciation): positive for importers (oil, pharma API)
+  → Weak INR (depreciation): positive for IT exporters, negative for oil/auto
 
-Commodity Prices:
-  Crude Oil (WTI): ${crude_current}  ({crude_1m_change}% 1M)
-  Gold:            ${gold_current}  ({gold_1m_change}% 1M)
+Crude Oil WTI:       ${crude_current} ({crude_1m_change}% 1M)
+  → Sector impact: {crude_sector_impact}
+  → High crude: bad for auto, aviation, chemicals; good for ONGC, oil PSUs
+  → Low crude: good for paint, tyre, airline companies
 
-━━━ CORPORATE GOVERNANCE DATA ━━━
+Gold:                ${gold_current} ({gold_1m_change}% 1M)
 
-Promoter Shareholding (Last 8 Quarters):
-{promoter_holding_table}
-Trend: {promoter_trend}
+━━━ CORPORATE GOVERNANCE (Source: {shareholding_source}) ━━━
+Promoter Holding:    {promoter_holding_pct}%
+  Trend (last 8Q):   {promoter_trend}
+  → increasing: promoters buying back = very bullish signal
+  → decreasing: promoters reducing stake = red flag
 
-Promoter Pledge %:  {promoter_pledge_pct}%
-  → {pledge_interpretation}
-  (<5% = safe, 5–20% = watch, >20% = concern, >40% = high risk)
+Promoter Pledge:     {promoter_pledge_pct}%  → Risk: {pledge_risk}
+  → very_low (<5%): negligible risk
+  → low (5–20%): acceptable, monitor
+  → moderate (20–35%): elevated — margin call risk in market downturn
+  → high (35–50%): serious concern
+  → very_high (>50%): GOVERNANCE VETO RISK
+
+DII Holding:         {dii_holding_pct}%
+FII Holding:         {fii_holding_pct}%
+Public/Retail:       {public_holding_pct}%
 
 Recent Insider Transactions (Last 6 Months):
 {insider_transactions_table}
@@ -104,6 +115,10 @@ Provide macro & governance analysis as JSON with this exact schema:
     "insider_signal": "strong_buy" | "buy" | "neutral" | "sell" | "strong_sell",
     "rate_cycle_impact": "positive" | "neutral" | "negative",
     "sector_macro_tailwind": true | false,
+    "promoter_signal": "accumulating" | "stable" | "reducing" | "unknown",
+    "governance_veto_risk": true | false,
+    "macro_tailwind": true | false,
+    "currency_impact": "positive" | "neutral" | "negative",
     "governance_score_detail": {{
         "promoter_holding": <float 0–10>,
         "pledge_risk": <float 0–10>,
@@ -142,26 +157,34 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
     gov = state.get("governance_data", {})
     nse = state.get("nse_data", {})
     inst = state.get("institutional_data", {})
+    market_breadth = state.get("market_breadth", {})
+    sector = fundamental.get("sector", "Unknown").lower()
     
     # Format lists to text
     gdp_hist = "\n".join([f"{y}: {v}%" for y, v in macro.get("gdp_growth_pct", [])]) or "Unavailable"
     cpi_hist = "\n".join([f"{y}: {v}%" for y, v in macro.get("cpi_inflation_pct", [])]) or "Unavailable"
     
-    usdinr = macro.get("usdinr", {})
-    nifty = macro.get("nifty50", {})
-    n_bank = macro.get("nifty_bank", {})
-    sect = macro.get("sector_idx", {})
-    crude = macro.get("crude_oil", {})
-    gold = macro.get("gold", {})
+    usdinr = market_breadth.get("usdinr", {})
+    crude = market_breadth.get("crude", {})
+    gold = market_breadth.get("gold", {})
+    
+    # Crude sector impact logic
+    crude_sector_impact = "neutral"
+    if "auto" in sector or "aviation" in sector or "chemicals" in sector or "paint" in sector or "tyre" in sector:
+        crude_sector_impact = "negative (input cost headwind)" if (crude.get("current", 0) > 80) else "positive (input cost tailwind)"
+    elif "oil" in sector or "energy" in sector:
+        crude_sector_impact = "positive (realization tailwind)" if (crude.get("current", 0) > 80) else "negative (realization headwind)"
     
     promoter_trend = gov.get("trend", "Unknown")
-    promoter_table = " | ".join(gov.get("promoter_holding_quarterly", [])) or "No data."
     
     pledge_pct = gov.get("promoter_pledge_pct", 0)
-    p_interp = "safe"
-    if pledge_pct > 40: p_interp = "high risk"
-    elif pledge_pct > 20: p_interp = "concern"
-    elif pledge_pct > 5: p_interp = "watch"
+    p_interp = gov.get("pledge_risk", "unknown")
+    if p_interp == "unknown":
+        if pledge_pct > 50: p_interp = "very_high"
+        elif pledge_pct > 35: p_interp = "high"
+        elif pledge_pct > 20: p_interp = "moderate"
+        elif pledge_pct > 5: p_interp = "low"
+        else: p_interp = "very_low"
     
     insiders = gov.get("insider_transactions", [])
     insider_txt = "\n".join([str(i) for i in insiders]) if insiders else "No recent notable insider records found."
@@ -179,20 +202,24 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
         repo_rate=macro.get("repo_rate", 6.50),
         last_rate_change=macro.get("last_change", "N/A"),
         rbi_stance=macro.get("stance", "N/A"),
+        market_regime=market_breadth.get("market_regime", "neutral").upper(),
+        vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
+        fear_level=market_breadth.get("fear_level", "normal").replace("_", " ").upper(),
         usdinr_current=format_metric(usdinr.get("current")),
         usdinr_1m_change=format_metric(usdinr.get("1m_change")),
-        nifty50_current=format_metric(nifty.get("current")),
-        nifty50_1m_change=format_metric(nifty.get("1m_change")),
-        nifty_bank_1m_change=format_metric(n_bank.get("1m_change")),
-        sector_index_1m_change=format_metric(sect.get("1m_change")),
         crude_current=format_metric(crude.get("current")),
         crude_1m_change=format_metric(crude.get("1m_change")),
+        crude_sector_impact=crude_sector_impact.upper(),
         gold_current=format_metric(gold.get("current")),
         gold_1m_change=format_metric(gold.get("1m_change")),
-        promoter_holding_table=promoter_table,
-        promoter_trend=promoter_trend.upper(),
+        shareholding_source="Screener.in (Latest)",
+        promoter_holding_pct=format_metric(gov.get("promoter_holding_pct", "N/A")),
+        promoter_trend=promoter_trend.replace("_", " ").upper(),
         promoter_pledge_pct=format_metric(pledge_pct),
-        pledge_interpretation=p_interp.upper(),
+        pledge_risk=p_interp.replace("_", " ").upper(),
+        dii_holding_pct=format_metric(gov.get("dii_holding_pct", "N/A")),
+        fii_holding_pct=format_metric(gov.get("fii_holding_pct", "N/A")),
+        public_holding_pct=format_metric(gov.get("public_holding_pct", "N/A")),
         insider_transactions_table=insider_txt,
         corporate_announcements_list=ann_txt,
         surveillance_status=nse.get("surveillance_flag", "None"),

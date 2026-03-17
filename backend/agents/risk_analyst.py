@@ -50,14 +50,29 @@ ATR (14-day):                ₹{atr_14}
 % from 52-Week Low:          {pct_from_52w_low}%
   → Buying near 52w high = momentum risk; near 52w low = value opportunity
 
-━━━ FINANCIAL / BALANCE SHEET RISK ━━━
-Debt-to-Equity:              {debt_to_equity}
-Current Ratio:               {current_ratio}
-Interest Coverage:           {interest_coverage}x
-Total Debt:                  ₹{total_debt_cr} Crore
-Free Cash Flow:              ₹{free_cashflow_cr} Crore
+━━━ FINANCIAL P/E Ratio:              {pe_ratio} (Sector Med: {sector_med_pe})  → Premium/Discount: {pe_vs_sector}
+Debt-to-Equity:         {debt_to_equity}
+Current Ratio:          {current_ratio}
+Altman Z-Score:         {altman_z}
 
-━━━ NSE SIGNALS ━━━
+━━━ EVENT & VOLATILITY RISK ━━━
+India VIX:              {vix_current} ({fear_level})
+  → high VIX (>20) = systemic risk is elevated, require wider stop losses
+
+Earnings Proximity:     {days_to_earnings} days away
+Earnings Risk Level:    {earnings_proximity_risk}
+  → VERY HIGH: earnings within 7 days — extreme gap risk, reduce size 50%
+  → HIGH: 8–21 days — elevated risk
+Historical Surprises:   {surprises_str}
+Beat/Miss Trend:        {beat_miss_trend}
+
+━━━ SURVEILLANCE & SECTOR CLASSIFICATION ━━━
+NSE ASM/GSM Status:     {surveillance_status}
+Sector:                 {sector}
+Industry:               {industry}
+Market Cap:             ₹{market_cap_cr} Crore
+
+━━━ LIQUIDITY & TRADING BEHAVIOR ━━━
 Delivery % Today:            {delivery_pct_today}%
   → Interpretation:          {delivery_interpretation}
      (>60% = strong genuine buying, institutional accumulation)
@@ -69,13 +84,6 @@ Circuit Limit:               {circuit_limit}
   → Narrow circuit (5% or 10%) = HIGH liquidity risk, potential operator stock
   → Wide circuit (20%) = standard large-cap
   → No circuit = index stock (lowest liquidity risk)
-Surveillance Flag:           {surveillance_flag}
-  → ASM/GSM = SEBI has flagged this stock — mandatory risk flag
-
-━━━ SECTOR CONTEXT ━━━
-Sector:     {sector}
-Industry:   {industry}
-Market Cap: ₹{market_cap_cr} Crore
 
 Provide risk assessment as JSON with this exact schema:
 {{
@@ -99,12 +107,24 @@ Provide risk assessment as JSON with this exact schema:
         "<specific red flag 1 with metric>",
         "<specific red flag 2 with metric>"
     ],
+    "company_specific_risks": [
+        "<Brief bullet 1 (e.g., High debt burden)>",
+        "<Brief bullet 2 (e.g., Promoter pledging >25%)>"
+    ],
+    "macro_sector_risks": [
+        "<Brief bullet 1 (e.g., Vulnerable to rising crude oil)>",
+        "<Brief bullet 2 (e.g., Sector rotation away from IT)>"
+    ],
     "risk_level": "very_low" | "low" | "moderate" | "high" | "very_high",
     "beta_category": "defensive" | "market_like" | "aggressive",
     "financial_risk": "very_low" | "low" | "moderate" | "high",
     "liquidity_risk": "very_low" | "low" | "moderate" | "high",
+    "event_risk": "high" | "moderate" | "low",
     "max_loss_estimate": "<e.g. worst case 30% drawdown in 1 year based on history>",
-    "suitable_for": ["aggressive_investor"] | ["moderate_investor"] | ["conservative_investor"] | ["trader"]
+    "recommended_stop_loss_buffer": <float, suggested % distance from entry for stop loss (e.g. 5.0 for low vol, 10.0 for high vol)>,
+    "position_size_modifier": <float, multiplier 0.1 to 1.0 (e.g. 0.5 if high risk, 1.0 if low risk)>,
+    "suitable_for": ["aggressive_investor"] | ["moderate_investor"] | ["conservative_investor"] | ["trader"],
+    "risk_score": <float 0–10, where 10 = extremely high risk, 0 = lowest risk>
 }}
 """
 
@@ -121,6 +141,27 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
     price = state.get("price_data", {})
     risk = state.get("risk_data", {}) # Will be populated by market_data.py
     nse = state.get("nse_data", {})
+    ta = state.get("technical_data", {})
+    macro = state.get("macro_data", {})
+    gov = state.get("governance_data", {})
+    inst = state.get("institutional_data", {})
+    earnings = state.get("earnings_data", {})
+    market_breadth = state.get("market_breadth", {})
+    
+    # Optional sector median fallback
+    peer_data = state.get("peer_data", {})
+    if isinstance(peer_data, dict):
+        sector_med_pe = format_metric(peer_data.get("sector_median_pe"))
+    else:
+        sector_med_pe = "N/A"
+        
+    target_pe = fundamental.get("pe_ratio")
+    pe_vs_sector = "N/A"
+    if target_pe is not None and sector_med_pe != "N/A":
+        try:
+            diff_pe = ((float(target_pe) - float(sector_med_pe)) / float(sector_med_pe)) * 100
+            pe_vs_sector = f"{abs(diff_pe):.1f}% {'PREMIUM' if diff_pe > 0 else 'DISCOUNT'}"
+        except: pass
     
     b = risk.get("beta")
     b_interp = "N/A"
@@ -170,11 +211,19 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         atr_14=format_metric(risk.get("atr_14")),
         pct_from_52w_high=format_metric(risk.get("pct_from_52w_high")),
         pct_from_52w_low=format_metric(risk.get("pct_from_52w_low")),
+        pe_ratio=format_metric(target_pe),
+        sector_med_pe=sector_med_pe,
+        pe_vs_sector=pe_vs_sector,
         debt_to_equity=format_metric(fundamental.get("debt_to_equity")),
         current_ratio=format_metric(fundamental.get("current_ratio")),
-        interest_coverage=format_metric(fundamental.get("interest_coverage")),
-        total_debt_cr=format_metric((fundamental.get("total_debt") or 0) / 10000000),
-        free_cashflow_cr=format_metric((fundamental.get("free_cashflow") or 0) / 10000000),
+        altman_z=format_metric(fundamental.get("altman_z_score")),
+        vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
+        fear_level=market_breadth.get("fear_level", "normal").replace("_", " ").upper(),
+        days_to_earnings=earnings.get("days_to_earnings", "unknown"),
+        earnings_proximity_risk=earnings.get("earnings_proximity_risk", "unknown").upper(),
+        surprises_str=", ".join([f"{s:+.2f}%" for s in earnings.get("earnings_surprises_last_4q", [])]) or "No data",
+        beat_miss_trend=earnings.get("beat_miss_trend", "unknown").replace("_", " ").upper(),
+        surveillance_status=nse.get("surveillance_flag", "None"),
         sector=fundamental.get("sector", "Unknown"),
         industry=fundamental.get("industry", "Unknown"),
         market_cap_cr=format_metric((price.get("market_cap") or 0) / 10000000),
