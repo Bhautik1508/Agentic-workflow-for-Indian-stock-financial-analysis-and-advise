@@ -84,19 +84,129 @@ Provide your final judgement as JSON with this exact schema:
     "confidence": <float 0.0–1.0 based on inter-analyst agreement>,
     "key_findings": [
         "<synthesis of bullish points>",
-        "<synthesis of technical entry/setup>",
-        "<synthesis of macro/sentiment context>"
-    ],
-    "risk_flags": [
-        "<synthesis of main bearish arguments>",
-        "<critical veto flags triggered, if any>"
-    ],
-    "final_decision": "STRONG BUY" | "BUY" | "HOLD" | "SELL" | "STRONG SELL",
-    "analyst_alignment": "strong_consensus" | "mixed" | "conflicting" | "bearish_consensus",
-    "time_horizon_suggested": "short_term_trade" | "medium_term_position" | "long_term_investment" | "avoid",
-    "veto_triggered": true | false
+    "summary": "<2-3 sentence final verdict>",
+    "action": "BUY" | "HOLD" | "SELL",
+    "score": <float 0-10>,
+    "max_entry_price": <float INR, absolute max to pay based on TA and fundamentals>,
+    "target_price": <float INR, blended target from TA and Fundamentals>,
+    "stop_loss": <float INR, mandatory invalidation level>,
+    "time_horizon": "short_term" | "medium_term" | "long_term",
+    "conviction_level": "high" | "medium" | "low",
+    "veto_triggered": true | false,
+    "score_attribution": {{
+        "financial_weight": "<string, e.g. '+3/10 (Undervalued)'>",
+        "technical_weight": "<string, e.g. '+1/10 (Neutral setup)'>",
+        "macro_gov_weight": "<string, e.g. '-2/10 (Governance veto)'>",
+        "risk_weight": "<string, e.g. '0/10 (Standard risk)'>"
+    }},
+    "weakest_pillar": "financial" | "technical" | "macro_governance" | "risk",
+    "strongest_pillar": "financial" | "technical" | "macro_governance" | "risk"
 }}
 """
+
+def apply_all_veto_rules(state: dict, reports: dict) -> list:
+    """
+    Evaluates hard risk rules across all data.
+    Returns a list of veto reasons (strings). If empty, no veto.
+    """
+    vetoes = []
+    
+    # 1. Earnings Proximity Veto
+    earnings_risk = reports.get("financial", {}).get("earnings_risk", "unknown")
+    if earnings_risk == "very_high":
+        vetoes.append("EARNINGS_PROXIMITY: Earnings within 7 days. Action restricted to HOLD/wait-and-see.")
+        
+    # 2. Options Signal vs Technical Veto
+    options_sig = reports.get("technical", {}).get("options_signal", "neutral")
+    tech_sig = reports.get("technical", {}).get("signal", "buy")
+    if (options_sig == "bearish" and "buy" in tech_sig) or (options_sig == "bullish" and "sell" in tech_sig):
+        vetoes.append(f"OPTIONS_DIVERGENCE: Tech signal is {tech_sig} but options chain indicates {options_sig}. Requires high conviction to proceed.")
+        
+    # 3. Governance Veto
+    gov_veto = reports.get("macro_governance", {}).get("governance_veto_risk", False)
+    pledge_risk = reports.get("macro_governance", {}).get("governance_score_detail", {}).get("pledge_risk", 10)
+    if gov_veto or pledge_risk < 2:  # Assuming score < 2 means terrible pledge
+        vetoes.append("GOVERNANCE_VETO: Promoter pledge is critically high (>50%) or governance is severely compromised. Cap score at 4/10.")
+        
+    # 4. Market VIX Veto
+    fear_level = state.get("market_breadth", {}).get("fear_level", "normal")
+    if fear_level == "high_fear":
+        vetoes.append("SYSTEMIC_RISK: India VIX > 25. Extremely high market volatility. Reduce position sizes significantly.")
+        
+    # 5. Risk Assessment Veto
+    risk_report = reports.get("risk", {})
+    if risk_report.get("risk_level") == "very_high" or risk_report.get("financial_risk") == "high":
+        vetoes.append("FUNDAMENTAL_RISK_VETO: Severe company-specific risk or financial distress detected. Action restricted to SELL/AVOID.")
+        
+    return vetoes
+
+async def run_judge_analysis(state: dict) -> dict:
+    # 1) Re-parse all analyst outputs from state
+    fa = state.get("financial_analysis", {})
+    ta = state.get("technical_analysis", {})
+    ma = state.get("macro_governance_analysis", {})
+    ra = state.get("risk_analysis", {})
+    
+    # Bundle for the veto function
+    reports_bundle = {
+        "financial": fa,
+        "technical": ta,
+        "macro_governance": ma,
+        "risk": ra
+    }
+    
+    # 2) Run hard systemic veto checks
+    vetoes = apply_all_veto_rules(state, reports_bundle)
+    if vetoes:
+        veto_status_string = "🚨 VETO(ES) TRIGGERED:\n- " + "\n- ".join(vetoes)
+    else:
+        veto_status_string = "✅ PASS: No hard systemic system vetoes triggered."
+    
+    # 3) Setup format vars
+    prompt = JUDGE_USER_PROMPT.format(
+        company_name=state.get("company_name", "the asset"),
+        
+        val_verdict=fa.get("valuation_verdict", "N/A"),
+        fin_health=fa.get("financial_health", "N/A"),
+        pe_premium_discount=f"{fa.get('pe_premium_discount_pct', 'N/A')}%",
+        fin_details=str({k:v for k,v in fa.items() if k not in ["valuation_verdict", "financial_health"]}),
+        
+        trend=ta.get("trend_analysis", "N/A"),
+        tech_signal=ta.get("signal", "N/A"),
+        tech_target=ta.get("technical_target", "N/A"),
+        options_signal=ta.get("options_signal", "N/A"),
+        tech_tailwind=ta.get("market_tailwind", False),
+        tech_details=str({k:v for k,v in ta.items() if k not in ["trend_analysis", "signal"]}),
+        
+        macro_env=ma.get("macro_environment", "N/A"),
+        gov_quality=ma.get("governance_quality", "N/A"),
+        insider_signal=ma.get("insider_signal", "N/A"),
+        gov_veto=ma.get("governance_veto_risk", False),
+        macro_tailwind=ma.get("macro_tailwind", False),
+        currency_impact=ma.get("currency_impact", "N/A"),
+        macro_gov_details=str({k:v for k,v in ma.items() if k not in ["macro_environment", "governance_quality", "insider_signal"]}),
+        
+        risk_level=ra.get("risk_level", "N/A"),
+        fin_risk=ra.get("financial_risk", "N/A"),
+        event_risk=ra.get("event_risk", "N/A"),
+        stop_buffer=ra.get("recommended_stop_loss_buffer", "N/A"),
+        size_mod=ra.get("position_size_modifier", "N/A"),
+        risk_details=str({k:v for k,v in ra.items() if k not in ["risk_level", "financial_risk"]}),
+        
+        veto_status_string=veto_status_string
+    )
+    
+    client = get_llm()
+    text = await call_llm_with_retry(
+        client=client,
+        messages=[
+            {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    
+    result = parse_llm_json(text)
+    return result
 
 @agent_with_fallback("Judge Analyst", default_score=5.0)
 async def run_judge_analyst(state: StockAnalysisState) -> AgentReport:
@@ -165,6 +275,27 @@ async def run_judge_analyst(state: StockAnalysisState) -> AgentReport:
 
     if not reports_text: reports_text = "No reports generated."
 
+    # 1) Re-parse all analyst outputs from state
+    fa = state.get("financial_analysis", {})
+    ta = state.get("technical_analysis", {})
+    ma = state.get("macro_governance_analysis", {})
+    ra = state.get("risk_analysis", {})
+    
+    # Bundle for the veto function
+    reports_bundle = {
+        "financial": fa,
+        "technical": ta,
+        "macro_governance": ma,
+        "risk": ra
+    }
+    
+    # 2) Run hard systemic veto checks
+    vetoes = apply_all_veto_rules(state, reports_bundle)
+    if vetoes:
+        veto_status_string = "🚨 VETO(ES) TRIGGERED:\n- " + "\n- ".join(vetoes)
+    else:
+        veto_status_string = "✅ PASS: No hard systemic system vetoes triggered."
+
     prompt = JUDGE_USER_PROMPT.format(
         company_name=state.get("company_name", "Unknown"),
         ticker=state.get("ticker", "UNKNOWN"),
@@ -173,7 +304,36 @@ async def run_judge_analyst(state: StockAnalysisState) -> AgentReport:
         sentiment_confidence=sentiment_confidence,
         effective_sentiment_weight=effective_sentiment_weight,
         sentiment_weight_note=sentiment_weight_note,
-        weighted_score=weighted_score
+        weighted_score=weighted_score,
+        
+        val_verdict=fa.get("valuation_verdict", "N/A"),
+        fin_health=fa.get("financial_health", "N/A"),
+        pe_premium_discount=f"{fa.get('pe_premium_discount_pct', 'N/A')}%",
+        fin_details=str({k:v for k,v in fa.items() if k not in ["valuation_verdict", "financial_health"]}),
+        
+        trend=ta.get("trend_analysis", "N/A"),
+        tech_signal=ta.get("signal", "N/A"),
+        tech_target=ta.get("technical_target", "N/A"),
+        options_signal=ta.get("options_signal", "N/A"),
+        tech_tailwind=ta.get("market_tailwind", False),
+        tech_details=str({k:v for k,v in ta.items() if k not in ["trend_analysis", "signal"]}),
+        
+        macro_env=ma.get("macro_environment", "N/A"),
+        gov_quality=ma.get("governance_quality", "N/A"),
+        insider_signal=ma.get("insider_signal", "N/A"),
+        gov_veto=ma.get("governance_veto_risk", False),
+        macro_tailwind=ma.get("macro_tailwind", False),
+        currency_impact=ma.get("currency_impact", "N/A"),
+        macro_gov_details=str({k:v for k,v in ma.items() if k not in ["macro_environment", "governance_quality", "insider_signal"]}),
+        
+        risk_level=ra.get("risk_level", "N/A"),
+        fin_risk=ra.get("financial_risk", "N/A"),
+        event_risk=ra.get("event_risk", "N/A"),
+        stop_buffer=ra.get("recommended_stop_loss_buffer", "N/A"),
+        size_mod=ra.get("position_size_modifier", "N/A"),
+        risk_details=str({k:v for k,v in ra.items() if k not in ["risk_level", "financial_risk"]}),
+        
+        veto_status_string=veto_status_string
     )
 
     text = await call_llm_with_retry(

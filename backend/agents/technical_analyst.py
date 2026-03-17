@@ -66,6 +66,30 @@ Today's Volume:      {volume_today:,}
 Volume Ratio:        {volume_ratio}x  → {volume_interpretation}
 OBV Trend:           {obv_trend}  → {obv_interpretation}
 
+━━━ BROADER MARKET CONTEXT ━━━
+Market Regime:    {market_regime}
+  → bull: Nifty50 above SMA20, positive 1-month trend
+  → bear: Nifty50 below SMA20, negative trend (headwind for longs)
+  → neutral: mixed signals
+
+India VIX:        {vix_current}  ({fear_level})
+  → high_fear: VIX>25 — options expensive, bigger moves expected
+  → complacent: VIX<12 — market relaxed, could be near top
+  → normal: 12–18
+
+Nifty50 (1M):     {nifty50_1m_change}%
+Nifty Bank (1M):  {nifty_bank_1m_change}%
+
+━━━ OPTIONS CHAIN SIGNALS ━━━
+PCR (Put-Call Ratio): {pcr}  → {pcr_signal}
+  → PCR ≥1.3: excess puts = contrarian bullish (market is too fearful)
+  → PCR 0.8–1.3: neutral positioning
+  → PCR <0.8: excess calls = potential topping signal
+
+Max Call OI Strike (key resistance): ₹{max_call_oi_strike}
+Max Put OI Strike  (key support):    ₹{max_put_oi_strike}
+ATM Implied Volatility:              {atm_iv}%  ({iv_signal})
+
 ━━━ SUPPORT & RESISTANCE ━━━
 52-Week High:        ₹{high_52w}  ({pct_from_52w_high}% from current)
 52-Week Low:         ₹{low_52w}
@@ -112,7 +136,11 @@ Provide technical analysis as JSON with this exact schema:
     "technical_target": <float INR — bullish target if setup plays out>,
     "stop_loss_technical": <float INR — invalidation level>,
     "chart_pattern": "<detected pattern if any, e.g. 'cup and handle forming' or 'none'>",
-    "entry_zone": "<suggested entry price range e.g. ₹X–₹Y on dip>"
+    "entry_zone": "<suggested entry price range e.g. ₹X–₹Y on dip>",
+    "options_signal": "bullish" | "neutral" | "bearish" | "unavailable",
+    "key_resistance_options": <float INR, max call OI strike>,
+    "key_support_options": <float INR, max put OI strike>,
+    "market_tailwind": true | false
 }}
 """
 
@@ -127,6 +155,8 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
     
     ta_data = state.get("technical_data", {})
     price_data = state.get("price_data", {})
+    market_breadth = state.get("market_breadth", {})
+    options_data = state.get("options_data", {})
     
     c = ta_data.get("current_price", price_data.get("current_price", 0))
     
@@ -216,7 +246,18 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         fib_500=format_metric(fib.get("fib_500")),
         fib_618=format_metric(fib.get("fib_618")),
         fib_786=format_metric(fib.get("fib_786")),
-        fib_100=format_metric(fib.get("fib_100"))
+        fib_100=format_metric(fib.get("fib_100")),
+        market_regime=market_breadth.get("market_regime", "neutral").upper(),
+        vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
+        fear_level=market_breadth.get("fear_level", "normal").replace("_", " ").upper(),
+        nifty50_1m_change=format_metric(market_breadth.get("nifty50", {}).get("1m_change")),
+        nifty_bank_1m_change=format_metric(market_breadth.get("nifty_bank", {}).get("1m_change")),
+        pcr=format_metric(options_data.get("pcr")),
+        pcr_signal=options_data.get("pcr_signal", "unavailable").upper(),
+        max_call_oi_strike=format_metric(options_data.get("max_call_oi_strike")),
+        max_put_oi_strike=format_metric(options_data.get("max_put_oi_strike")),
+        atm_iv=format_metric(options_data.get("atm_iv")),
+        iv_signal=options_data.get("iv_signal", "unknown").upper()
     )
     
     text = await call_llm_with_retry(

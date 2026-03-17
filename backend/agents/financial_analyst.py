@@ -63,13 +63,15 @@ CapEx:                  ₹{capex_cr} Crore
 Dividend Yield:         {dividend_yield}
 Payout Ratio:           {payout_ratio}
 
-━━━ SECTOR PEER COMPARISON ━━━
-Ticker | P/E | P/B | ROE | Rev Growth | Market Cap (Cr)
---- | --- | --- | --- | --- | ---
-{peer_table}
+━━━ SECTOR PEER COMPARISON ({peer_count} peers found) ━━━
+Metric         {company_name}    Sector Median    Assessment
+P/E Ratio      {pe_ratio}x       {sector_med_pe}x  {pe_vs_sector}
+P/B Ratio      {pb_ratio}x       {sector_med_pb}x  {pb_vs_sector}
+ROE            {roe_pct}%        {sector_med_roe}%  {roe_vs_sector}
 
-Sector Median P/E: {sector_median_pe}
-→ {company_name} trades at {pe_premium_discount}% {premium_or_discount} to sector median
+Top Peers:
+{peer_table_rows}
+(Format each peer: "Ticker | P/E | P/B | ROE | Rev Growth")
 
 ━━━ SCREENER.IN 10-YEAR TREND ━━━
 Revenue CAGR (5Y):      {revenue_cagr_5y}
@@ -81,10 +83,15 @@ Full Screener Data:
 {screener_data_summary}
 
 ━━━ EARNINGS QUALITY ━━━
-Next Earnings Date:          {next_earnings_date}
-Last 4 Quarters Surprise:    {earnings_surprises}%
-Avg Earnings Surprise:       {avg_earnings_surprise}%
-Beat/Miss Trend:             {beat_miss_trend}
+Next Earnings: {next_earnings_date} ({days_to_earnings} days away)
+Earnings Risk: {earnings_proximity_risk}
+  → VERY HIGH: earnings in ≤7 days — major uncertainty, size position conservatively
+  → HIGH: earnings in 8–21 days — watch for guidance
+
+Last 4Q Earnings Surprises: {surprises_str}
+  (positive = beat, negative = miss)
+Beat/Miss Trend: {beat_miss_trend}
+Average Surprise: {avg_surprise}%
 
 ━━━ BUSINESS DESCRIPTION ━━━
 {business_summary}
@@ -112,10 +119,13 @@ Provide your analysis as JSON with this exact schema:
         "<any red flag 2>"
     ],
     "valuation_verdict": "undervalued" | "fairly_valued" | "overvalued",
+    "pe_premium_discount_pct": <float, % above or below sector median P/E, positive for premium, negative for discount>,
     "financial_health": "excellent" | "good" | "average" | "poor",
     "growth_quality": "high_quality" | "moderate" | "low_quality" | "declining",
     "pe_vs_history": "<comment on current P/E vs 5-year average>",
     "moat_assessment": "<brief comment on competitive moat>",
+    "earnings_risk": "very_high" | "high" | "moderate" | "low",
+    "earnings_quality": "consistently_beating" | "mostly_beating" | "mixed" | "consistently_missing" | "unknown",
     "target_price_fundamental": <float INR, your DCF/PE-based fair value estimate>
 }}
 """
@@ -185,39 +195,67 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     roce_latest = get_latest_ratio(screener, "ratio_ROCE")
     roe_latest = get_latest_ratio(screener, "ratio_ROE")
     
-    # Peer Table & Sector Math
-    peers = fundamental.get("sector_peers", [])
-    peer_table = "No sector peer data available."
-    sector_median_pe = "N/A"
-    pe_premium_discount = "N/A"
-    premium_or_discount = ""
+    # Peer Table & Sector Math (using new peer_data)
+    peer_data = state.get("peer_data") or fundamental.get("sector_peers", {}) # Fallback to old for safety
+    if isinstance(peer_data, list):
+        # Handle graceful fallback if new logic isn't fully returning dict
+        peers = peer_data
+        peer_count = len(peers)
+        sector_med_pe = "N/A"
+        sector_med_pb = "N/A"
+        sector_med_roe = "N/A"
+    else:
+        peers = peer_data.get("peers", [])
+        peer_count = peer_data.get("peer_count", len(peers))
+        sector_med_pe = peer_data.get("sector_median_pe", "N/A")
+        sector_med_pb = peer_data.get("sector_median_pb", "N/A")
+        sector_med_roe = peer_data.get("sector_median_roe", "N/A")
+        if sector_med_roe != "N/A":
+            sector_med_roe = f"{float(sector_med_roe) * 100:.2f}"
+            
+    peer_table_rows = "No sector peer data available."
+    
+    # Premium/Discount calculations
+    pe_vs_sector = "N/A"
+    pb_vs_sector = "N/A"
+    roe_vs_sector = "N/A"
+    
+    target_pe = fundamental.get("pe_ratio")
+    target_pb = fundamental.get("pb_ratio")
+    target_roe = fundamental.get("roe")
+    
+    if target_pe is not None and sector_med_pe != "N/A":
+        try:
+            diff_pe = ((float(target_pe) - float(sector_med_pe)) / float(sector_med_pe)) * 100
+            if diff_pe > 0: pe_vs_sector = f"trading at {abs(diff_pe):.1f}% PREMIUM to sector"
+            else: pe_vs_sector = f"trading at {abs(diff_pe):.1f}% DISCOUNT to sector"
+        except: pass
+
+    if target_pb is not None and sector_med_pb != "N/A":
+        try:
+            diff_pb = ((float(target_pb) - float(sector_med_pb)) / float(sector_med_pb)) * 100
+            if diff_pb > 0: pb_vs_sector = f"trading at {abs(diff_pb):.1f}% PREMIUM to sector"
+            else: pb_vs_sector = f"trading at {abs(diff_pb):.1f}% DISCOUNT to sector"
+        except: pass
+        
+    if target_roe is not None and sector_med_roe != "N/A":
+        try:
+            diff_roe = ((float(target_roe) * 100) - float(sector_med_roe))
+            if diff_roe > 0: roe_vs_sector = f"{abs(diff_roe):.1f}% HIGHER than sector"
+            else: roe_vs_sector = f"{abs(diff_roe):.1f}% LOWER than sector"
+        except: pass
     
     if peers:
         table_rows = []
-        pe_list = []
         for p in peers:
             p_pe = format_metric(p.get('pe'))
             p_pb = format_metric(p.get('pb'))
             p_roe = format_metric(p.get('roe'), True)
             p_rev = format_metric(p.get('revenue_growth'), True)
-            p_cap = format_metric(p.get('market_cap_cr'))
-            table_rows.append(f"{p['ticker']} | {p_pe} | {p_pb} | {p_roe} | {p_rev} | {p_cap}")
-            if p.get('pe') is not None:
-                pe_list.append(float(p.get('pe')))
+            table_rows.append(f"{p.get('ticker', 'Unknown')} | {p_pe} | {p_pb} | {p_roe} | {p_rev}")
                 
         if table_rows:
-            peer_table = "\n".join(table_rows)
-            
-        if pe_list:
-            import statistics
-            median_pe = statistics.median(pe_list)
-            sector_median_pe = f"{median_pe:.2f}"
-            
-            target_pe = fundamental.get("pe_ratio")
-            if target_pe is not None:
-                diff = ((float(target_pe) - median_pe) / median_pe) * 100
-                pe_premium_discount = f"{abs(diff):.1f}"
-                premium_or_discount = "premium" if diff > 0 else "discount"
+            peer_table_rows = "\n".join(table_rows)
     
     prompt = FINANCIAL_USER_PROMPT.format(
         company_name=state["company_name"],
@@ -256,10 +294,15 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         capex_cr=format_metric((fundamental.get("capex") or 0) / 10000000),
         dividend_yield=format_metric(fundamental.get("dividend_yield"), True),
         payout_ratio=format_metric(fundamental.get("payout_ratio"), True),
-        peer_table=peer_table,
-        sector_median_pe=sector_median_pe,
-        pe_premium_discount=pe_premium_discount,
-        premium_or_discount=premium_or_discount,
+        peer_count=peer_count,
+        sector_med_pe=sector_med_pe,
+        sector_med_pb=sector_med_pb,
+        sector_med_roe=sector_med_roe,
+        pe_vs_sector=pe_vs_sector,
+        pb_vs_sector=pb_vs_sector,
+        roe_pct=format_metric((target_roe * 100) if target_roe is not None else None),
+        roe_vs_sector=roe_vs_sector,
+        peer_table_rows=peer_table_rows,
         revenue_cagr_5y=revenue_cagr_5y,
         profit_cagr_5y=profit_cagr_5y,
         roce_latest=roce_latest,
@@ -267,8 +310,10 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         screener_data_summary=screener_text,
         business_summary=fundamental.get("business_summary", "No description available."),
         next_earnings_date=earnings.get("next_earnings_date", "Unknown"),
-        earnings_surprises=", ".join([f"{s:+.2f}" for s in earnings.get("earnings_surprises_last_4q", [])]) or "No data",
-        avg_earnings_surprise=earnings.get("avg_earnings_surprise") if earnings.get("avg_earnings_surprise") is not None else "N/A",
+        days_to_earnings=earnings.get("days_to_earnings", "unknown"),
+        earnings_proximity_risk=earnings.get("earnings_proximity_risk", "unknown").upper(),
+        surprises_str=", ".join([f"{s:+.2f}%" for s in earnings.get("earnings_surprises_last_4q", [])]) or "No data",
+        avg_surprise=earnings.get("avg_earnings_surprise") if earnings.get("avg_earnings_surprise") is not None else "N/A",
         beat_miss_trend=earnings.get("beat_miss_trend", "unknown").replace("_", " ").upper(),
     )
     
