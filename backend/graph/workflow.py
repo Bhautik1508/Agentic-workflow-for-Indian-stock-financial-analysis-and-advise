@@ -68,10 +68,14 @@ async def judge_node(state: StockAnalysisState):
     
     metadata = final_report.get("data", {}) if isinstance(final_report, dict) else final_report.data
     return {
-        "final_decision": metadata.get("final_decision", "HOLD"),
+        "final_decision": metadata.get("action", "HOLD"),
+        "action": metadata.get("action", "HOLD"),
         "confidence_score": final_report.get("confidence", 0.0) * 10.0 if isinstance(final_report, dict) else getattr(final_report, 'confidence', 0.0) * 10.0,
         "investment_thesis": final_report.get("summary", "") if isinstance(final_report, dict) else getattr(final_report, 'summary', ""),
-        "key_risks": final_report.get("risk_flags", []) if isinstance(final_report, dict) else getattr(final_report, 'risk_flags', [])
+        "key_risks": final_report.get("risk_flags", []) if isinstance(final_report, dict) else getattr(final_report, 'risk_flags', []),
+        "key_catalysts": final_report.get("key_catalysts", []) if isinstance(final_report, dict) else getattr(final_report, 'key_catalysts', []),
+        "conviction_level": metadata.get("conviction_level", "medium"),
+        "max_entry_price": metadata.get("max_entry_price")
     }
 
 def build_workflow():

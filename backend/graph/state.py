@@ -2,9 +2,11 @@ from typing import TypedDict, Optional, List, Dict, Any
 from enum import Enum
 
 class Decision(str, Enum):
+    STRONG_BUY = "STRONG_BUY"
     BUY = "BUY"
-    SELL = "SELL"
     HOLD = "HOLD"
+    SELL = "SELL"
+    STRONG_SELL = "STRONG_SELL"
 
 class AgentStatus(str, Enum):
     PENDING = "pending"
@@ -59,12 +61,16 @@ class StockAnalysisState(TypedDict):
     
     # Final judgment
     final_decision: Optional[Decision]
+    action: Optional[str]
     confidence_score: float       # 0-100
     target_price_inr: Optional[float]
+    max_entry_price: Optional[float]
     stop_loss_inr: Optional[float]
     time_horizon: Optional[str]   # "short" | "medium" | "long"
     investment_thesis: Optional[str]
     key_risks: List[str]
+    key_catalysts: List[str]
+    conviction_level: Optional[str]
     
     # Metadata
     error: Optional[str]

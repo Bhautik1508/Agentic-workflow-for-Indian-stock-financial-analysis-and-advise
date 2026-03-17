@@ -54,7 +54,12 @@ async def analyze_stock(company_name: str):
                     # Sanitize the payload: strip out large raw datasets to prevent json.dumps crashes
                     safe_state = {}
                     for k, v in event["state"].items():
-                        if k.endswith("_report") or k in ["final_decision", "confidence_score", "investment_thesis", "key_risks"]:
+                        if k.endswith("_report") or k in [
+                            "final_decision", "action",
+                            "confidence_score", "investment_thesis",
+                            "key_risks", "key_catalysts",
+                            "conviction_level", "max_entry_price"
+                        ]:
                             safe_state[k] = v
                             if k.endswith("_report"):
                                 accumulated_reports[k] = v
@@ -67,9 +72,13 @@ async def analyze_stock(company_name: str):
                             "reports": accumulated_reports,
                             "judge_report": {
                                 "final_decision": event["state"].get("final_decision", "HOLD"),
+                                "action": event["state"].get("action", "HOLD"),
                                 "confidence_score": event["state"].get("confidence_score", 0),
                                 "investment_thesis": event["state"].get("investment_thesis", ""),
-                                "key_risks": event["state"].get("key_risks", [])
+                                "key_risks": event["state"].get("key_risks", []),
+                                "key_catalysts": event["state"].get("key_catalysts", []),
+                                "conviction_level": event["state"].get("conviction_level", "medium"),
+                                "max_entry_price": event["state"].get("max_entry_price")
                             }
                         }
                         save_analysis_to_cache(ticker, cached_payload)

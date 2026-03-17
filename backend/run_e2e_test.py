@@ -10,7 +10,13 @@ async def main():
             node = event["node"]
             print(f"\n✅ NODE FINISHED: {node}")
         elif event["event"] == "complete":
-            print(f"\n🎉 DONE: {event['data']}")
+            d = event.get('data', {})
+            print(f"\n🎉 DONE: Analysis Finished")
+            print(f"   Final Decision:    {d.get('final_decision')}")
+            print(f"   Action:            {d.get('action')}")
+            print(f"   Conviction Level:  {d.get('conviction_level')}")
+            print(f"   Max Entry Price:   {d.get('max_entry_price')}")
+            print(f"   Key Catalysts:     {d.get('key_catalysts')}")
         elif event["event"] == "error":
             print(f"\n❌ ERROR: {event['data']}")
             
