@@ -170,20 +170,31 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
     
     # Crude sector impact logic
     crude_sector_impact = "neutral"
+    crude_current = crude.get("current")
+    try:
+        crude_val = float(crude_current) if crude_current is not None else 0.0
+    except (ValueError, TypeError):
+        crude_val = 0.0
+
     if "auto" in sector or "aviation" in sector or "chemicals" in sector or "paint" in sector or "tyre" in sector:
-        crude_sector_impact = "negative (input cost headwind)" if (crude.get("current", 0) > 80) else "positive (input cost tailwind)"
+        crude_sector_impact = "negative (input cost headwind)" if (crude_val > 80) else "positive (input cost tailwind)"
     elif "oil" in sector or "energy" in sector:
-        crude_sector_impact = "positive (realization tailwind)" if (crude.get("current", 0) > 80) else "negative (realization headwind)"
+        crude_sector_impact = "positive (realization tailwind)" if (crude_val > 80) else "negative (realization headwind)"
     
     promoter_trend = gov.get("trend", "Unknown")
     
     pledge_pct = gov.get("promoter_pledge_pct", 0)
+    try:
+        pledge_val = float(pledge_pct) if pledge_pct not in [None, "N/A", ""] else 0.0
+    except (ValueError, TypeError):
+        pledge_val = 0.0
+
     p_interp = gov.get("pledge_risk", "unknown")
     if p_interp == "unknown":
-        if pledge_pct > 50: p_interp = "very_high"
-        elif pledge_pct > 35: p_interp = "high"
-        elif pledge_pct > 20: p_interp = "moderate"
-        elif pledge_pct > 5: p_interp = "low"
+        if pledge_val > 50: p_interp = "very_high"
+        elif pledge_val > 35: p_interp = "high"
+        elif pledge_val > 20: p_interp = "moderate"
+        elif pledge_val > 5: p_interp = "low"
         else: p_interp = "very_low"
     
     insiders = gov.get("insider_transactions", [])

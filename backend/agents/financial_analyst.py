@@ -166,8 +166,8 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
             latest_key = keys[-1]
             start_idx = max(0, len(keys) - n_years - 1)
             start_key = keys[start_idx]
-            latest_val = float(data_row[latest_key].replace(',', ''))
-            start_val = float(data_row[start_key].replace(',', ''))
+            latest_val = float(str(data_row[latest_key]).replace(',', ''))
+            start_val = float(str(data_row[start_key]).replace(',', ''))
             if start_val <= 0 or latest_val <= 0:
                 return "N/A"
             actual_years = len(keys) - 1 - start_idx
@@ -222,7 +222,11 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     
     target_pe = fundamental.get("pe_ratio")
     target_pb = fundamental.get("pb_ratio")
-    target_roe = fundamental.get("roe")
+    target_roe_raw = fundamental.get("roe")
+    try:
+        target_roe = float(target_roe_raw) if target_roe_raw is not None else None
+    except (ValueError, TypeError):
+        target_roe = None
     
     if target_pe is not None and sector_med_pe != "N/A":
         try:
