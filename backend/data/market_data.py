@@ -10,55 +10,84 @@ import os
 NSE_SUFFIX = ".NS"
 
 async def fetch_earnings_data(ticker: str) -> dict:
-    """Fetch quarterly earnings data, EPS surprises, and next earnings date."""
+    """Fetch earnings calendar, EPS surprises, and proximity risk."""
+    import asyncio
+    from datetime import datetime
+
+    stock = yf.Ticker(ticker)
+
+    # Run blocking calls in thread pool
     try:
-        stock = yf.Ticker(ticker)
-        
-        # Next earnings date
-        calendar = stock.calendar
-        next_earnings = None
-        if calendar is not None:
-            if isinstance(calendar, dict):
-                next_earnings = calendar.get("Earnings Date")
-            elif hasattr(calendar, "to_dict"):
-                cal_dict = calendar.to_dict()
-                next_earnings = cal_dict.get("Earnings Date")
-        
-        # Earnings history (actual vs estimated EPS)
-        earnings_hist = stock.earnings_history
-        
+        info = await asyncio.to_thread(lambda: stock.info)
+    except Exception:
+        info = {}
+    try:
+        calendar = await asyncio.to_thread(lambda: stock.calendar)
+    except Exception:
+        calendar = None
+
+    # ── Next earnings date + proximity risk ──
+    next_earnings = None
+    days_to_earnings = None
+    earnings_proximity_risk = "low"
+
+    if calendar is not None:
+        try:
+            ed = calendar.get("Earnings Date")
+            if ed is not None:
+                if hasattr(ed, '__iter__') and not isinstance(ed, str):
+                    ed = list(ed)[0]
+                if hasattr(ed, 'date'):
+                    ed = ed.date()
+                next_earnings = str(ed)
+                days_to_earnings = (ed - datetime.now().date()).days
+                if days_to_earnings is not None:
+                    if 0 <= days_to_earnings <= 7:
+                        earnings_proximity_risk = "very_high"    # earnings this week
+                    elif 0 <= days_to_earnings <= 21:
+                        earnings_proximity_risk = "high"          # within 3 weeks
+                    elif days_to_earnings < 0:
+                        earnings_proximity_risk = "low"           # just reported
+        except Exception:
+            pass
+
+    # ── Earnings surprise history (last 4 quarters) ──
+    try:
+        hist = await asyncio.to_thread(lambda: stock.earnings_history)
         surprises = []
-        if earnings_hist is not None and not earnings_hist.empty:
-            for _, row in earnings_hist.iterrows():
-                actual = row.get("Reported EPS") if "Reported EPS" in row else row.get("epsActual")
-                estimate = row.get("EPS Estimate") if "EPS Estimate" in row else row.get("epsEstimate")
-                if actual is not None and estimate is not None and estimate != 0:
-                    try:
-                        surprise_pct = ((float(actual) - float(estimate)) / abs(float(estimate))) * 100
-                        surprises.append(round(surprise_pct, 2))
-                    except:
-                        pass
-        
-        last_4 = surprises[:4]
-        
-        return {
-            "next_earnings_date": str(next_earnings[0]) if isinstance(next_earnings, list) and next_earnings else str(next_earnings) if next_earnings else "Unknown",
-            "earnings_surprises_last_4q": last_4,
-            "avg_earnings_surprise": round(sum(last_4) / len(last_4), 2) if last_4 else None,
-            "beat_miss_trend": (
-                "consistently_beating" if last_4 and all(s > 0 for s in last_4)
-                else "consistently_missing" if last_4 and all(s < 0 for s in last_4)
-                else "mixed"
-            ),
-        }
-    except Exception as e:
-        print(f"Earnings data fetch failed: {e}")
-        return {
-            "next_earnings_date": "Unknown",
-            "earnings_surprises_last_4q": [],
-            "avg_earnings_surprise": None,
-            "beat_miss_trend": "unknown",
-        }
+        if hist is not None and not hist.empty:
+            for _, row in hist.head(4).iterrows():
+                actual = row.get("Reported EPS")
+                estimate = row.get("EPS Estimate")
+                if actual is not None and estimate and estimate != 0:
+                    pct = round(((float(actual) - float(estimate)) / abs(float(estimate))) * 100, 1)
+                    surprises.append(pct)
+
+        beat_miss = "unknown"
+        if surprises:
+            positives = sum(1 for s in surprises if s > 0)
+            if positives == len(surprises):
+                beat_miss = "consistently_beating"
+            elif positives == 0:
+                beat_miss = "consistently_missing"
+            elif positives >= len(surprises) * 0.7:
+                beat_miss = "mostly_beating"
+            else:
+                beat_miss = "mixed"
+
+        avg_surprise = round(sum(surprises) / len(surprises), 1) if surprises else None
+
+    except Exception:
+        surprises, beat_miss, avg_surprise = [], "unknown", None
+
+    return {
+        "next_earnings_date":        next_earnings or "Unknown",
+        "days_to_earnings":          days_to_earnings,
+        "earnings_proximity_risk":   earnings_proximity_risk,
+        "earnings_surprises_4q":     surprises,
+        "avg_earnings_surprise_pct":  avg_surprise,
+        "beat_miss_trend":           beat_miss,
+    }
 
 
 async def fetch_institutional_data(ticker: str) -> dict:
@@ -749,47 +778,73 @@ async def fetch_bse_governance(bse_code: str) -> dict:
             ]
         }
 
-async def fetch_sector_peers(ticker: str, sector: str, max_peers: int = 5) -> list[dict]:
-    """
-    Fetch key metrics for top 5 sector peers for comparison.
-    Gracefully handles Yahoo Finance rate-limiting on cloud IPs.
-    """
-    if not sector: return []
-    
-    SECTOR_PEERS = {
-        "Technology": ["TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS"],
-        "Financial Services": ["HDFCBANK.NS", "ICICIBANK.NS", "KOTAKBANK.NS", "AXISBANK.NS", "SBIN.NS"],
-        "Consumer Defensive": ["HINDUNILVR.NS", "ITC.NS", "NESTLEIND.NS", "DABUR.NS", "MARICO.NS"],
-        "Healthcare": ["SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "APOLLOHOSP.NS"],
-        "Automobile": ["MARUTI.NS", "TATAMOTORS.NS", "M&M.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS"],
-        "Energy": ["RELIANCE.NS", "ONGC.NS", "NTPC.NS", "POWERGRID.NS", "BPCL.NS"],
-        "Materials": ["JSWSTEEL.NS", "TATASTEEL.NS", "HINDALCO.NS", "ULTRACEMCO.NS", "GRASIM.NS"],
-        "Real Estate": ["DLF.NS", "GODREJPROP.NS", "OBEROIRLTY.NS", "BRIGADE.NS", "PRESTIGE.NS"],
-    }
-    
-    peers = [t for t in SECTOR_PEERS.get(sector, []) if t != ticker][:max_peers]
-    
-    result = []
-    for peer in peers:
+SECTOR_PEER_MAP = {
+    "Technology":           ["TCS.NS","INFY.NS","WIPRO.NS","HCLTECH.NS","TECHM.NS","LTIM.NS"],
+    "Financial Services":   ["HDFCBANK.NS","ICICIBANK.NS","KOTAKBANK.NS","AXISBANK.NS","SBIN.NS","INDUSINDBK.NS"],
+    "Consumer Defensive":   ["HINDUNILVR.NS","ITC.NS","NESTLEIND.NS","DABUR.NS","MARICO.NS","GODREJCP.NS"],
+    "Healthcare":           ["SUNPHARMA.NS","DRREDDY.NS","CIPLA.NS","DIVISLAB.NS","APOLLOHOSP.NS","AUROPHARMA.NS"],
+    "Consumer Cyclical":    ["MARUTI.NS","TATAMOTORS.NS","M&M.NS","BAJAJ-AUTO.NS","HEROMOTOCO.NS","EICHERMOT.NS"],
+    "Energy":               ["RELIANCE.NS","ONGC.NS","NTPC.NS","POWERGRID.NS","BPCL.NS","IOC.NS"],
+    "Basic Materials":      ["JSWSTEEL.NS","TATASTEEL.NS","HINDALCO.NS","ULTRACEMCO.NS","GRASIM.NS","SAIL.NS"],
+    "Real Estate":          ["DLF.NS","GODREJPROP.NS","OBEROIRLTY.NS","BRIGADE.NS","PRESTIGE.NS"],
+    "Communication":        ["BHARTIARTL.NS","IDEA.NS","TATACOMM.NS"],
+    "Industrials":          ["LT.NS","SIEMENS.NS","ABB.NS","BHEL.NS","HAL.NS"],
+    "Utilities":            ["NTPC.NS","POWERGRID.NS","TATAPOWER.NS","ADANIGREEN.NS"],
+}
+
+async def fetch_sector_peers(ticker: str, sector: str) -> dict:
+    """Fetch key valuation metrics for top 5 sector peers (concurrent, rate-limit safe)."""
+    import asyncio
+
+    all_peers = [t for t in SECTOR_PEER_MAP.get(sector, []) if t != ticker][:5]
+    if not all_peers:
+        return {"peers": [], "sector_median_pe": None, "sector_median_pb": None,
+                "sector_median_roe": None, "peer_count": 0}
+
+    async def fetch_one(peer_ticker: str):
         try:
-            # Try fast_info first (lighter, less likely to be rate-limited)
-            peer_stock = yf.Ticker(peer)
+            # Try full info first (best data), fall back to fast_info
             try:
-                fi = peer_stock.fast_info
-                result.append({
-                    "ticker": peer,
-                    "pe": None,  # fast_info doesn't have P/E
-                    "pb": None,
-                    "roe": None,
-                    "market_cap_cr": round(fi.market_cap / 1e7, 0) if fi.market_cap else None,
-                    "revenue_growth": None,
-                })
+                info = await asyncio.to_thread(lambda: yf.Ticker(peer_ticker).info)
+                name  = info.get("shortName", peer_ticker.replace(".NS", ""))[:20]
+                pe    = info.get("trailingPE")
+                pb    = info.get("priceToBook")
+                roe   = info.get("returnOnEquity")
+                rev_g = info.get("revenueGrowth")
+                mcap  = round((info.get("marketCap") or 0) / 1e7, 0)
+                return {"ticker": peer_ticker, "name": name, "pe": pe,
+                        "pb": pb, "roe": roe, "revenue_growth": rev_g,
+                        "market_cap_cr": mcap}
             except Exception:
-                # If even fast_info fails, skip this peer silently
-                pass
-        except Exception as e:
-            print(f"Failed to fetch peer {peer}: {e}")
-    return result
+                # Rate-limited — fall back to fast_info
+                fi = await asyncio.to_thread(lambda: yf.Ticker(peer_ticker).fast_info)
+                return {"ticker": peer_ticker, "name": peer_ticker.replace(".NS", ""),
+                        "pe": None, "pb": None, "roe": None, "revenue_growth": None,
+                        "market_cap_cr": round(fi.market_cap / 1e7, 0) if fi.market_cap else None}
+        except Exception:
+            return None
+
+    results = await asyncio.gather(*[fetch_one(p) for p in all_peers], return_exceptions=True)
+    peer_data = [r for r in results if r and not isinstance(r, (Exception, type(None)))]
+
+    pes  = [p["pe"]  for p in peer_data if p.get("pe")]
+    pbs  = [p["pb"]  for p in peer_data if p.get("pb")]
+    roes = [p["roe"] for p in peer_data if p.get("roe")]
+
+    def median(lst):
+        if not lst:
+            return None
+        s = sorted(lst)
+        n = len(s)
+        return round(s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2, 2)
+
+    return {
+        "peers":             peer_data,
+        "sector_median_pe":  median(pes),
+        "sector_median_pb":  median(pbs),
+        "sector_median_roe": median(roes),
+        "peer_count":        len(peer_data),
+    }
 
 async def fetch_nse_insider_trading(symbol: str) -> list:
     """Returns recent insider buy/sell transactions (SAST/PIT disclosures)"""
@@ -1090,7 +1145,7 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
             "industry": _pick("industry"),
             "full_time_employees": _pick("fullTimeEmployees"),
             "business_summary": _pick("longBusinessSummary"),
-            "sector_peers": peer_data,
+            "sector_peers": peer_data.get("peers", []) if isinstance(peer_data, dict) else peer_data,
         },
         "screener_data": screener_data
     }
@@ -1101,5 +1156,80 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
             f"Could not find valid market records for '{ticker}'. "
             "Please ensure it is a valid Indian stock symbol."
         )
+
+    return result
+
+
+async def fetch_market_breadth() -> dict:
+    """
+    Fetches broad market context needed by Technical and Macro analysts.
+    Determines if we're in a bull/bear macro environment.
+    Uses stock.history() only — never rate-limited by Yahoo.
+    """
+    import asyncio
+
+    tickers = {
+        "nifty50":    "^NSEI",
+        "india_vix":  "^INDIAVIX",
+        "nifty_bank": "^NSEBANK",
+        "usdinr":     "INR=X",
+        "crude":      "CL=F",
+        "gold":       "GC=F",
+    }
+
+    result = {}
+
+    async def fetch_one(name, ticker):
+        try:
+            t = yf.Ticker(ticker)
+            hist = await asyncio.to_thread(lambda: t.history(period="60d"))
+            if len(hist) < 2:
+                return name, None
+
+            current = float(hist["Close"].iloc[-1])
+            prev_1m = float(hist["Close"].iloc[-22]) if len(hist) >= 22 else None
+            prev_1w = float(hist["Close"].iloc[-5]) if len(hist) >= 5 else None
+            sma_20 = float(hist["Close"].tail(20).mean())
+
+            return name, {
+                "current":       round(current, 2),
+                "change_1w_pct": round((current - prev_1w) / prev_1w * 100, 2) if prev_1w else None,
+                "change_1m_pct": round((current - prev_1m) / prev_1m * 100, 2) if prev_1m else None,
+                "above_sma20":   current > sma_20,
+            }
+        except Exception:
+            return name, None
+
+    tasks = [fetch_one(n, t) for n, t in tickers.items()]
+    for name, data in await asyncio.gather(*tasks):
+        if data:
+            result[name] = data
+
+    # Derive market regime
+    nifty = result.get("nifty50", {})
+    vix = result.get("india_vix", {})
+
+    market_regime = "neutral"
+    if nifty:
+        if nifty.get("above_sma20") and (nifty.get("change_1m_pct") or 0) > 0:
+            market_regime = "bull"
+        elif not nifty.get("above_sma20") and (nifty.get("change_1m_pct") or 0) < -3:
+            market_regime = "bear"
+
+    fear_level = "neutral"
+    if vix and vix.get("current"):
+        v = vix["current"]
+        if v > 25:
+            fear_level = "high_fear"
+        elif v > 18:
+            fear_level = "elevated"
+        elif v < 12:
+            fear_level = "complacent"
+        else:
+            fear_level = "normal"
+
+    result["market_regime"] = market_regime
+    result["fear_level"] = fear_level
+    result["vix_current"] = (vix or {}).get("current")
 
     return result

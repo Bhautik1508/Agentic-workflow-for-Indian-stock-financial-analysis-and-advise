@@ -7,8 +7,11 @@ from data.market_data import (
     fetch_gdelt_sentiment, fetch_fii_dii_data, fetch_nse_risk_signals,
     fetch_bse_governance, fetch_nse_insider_trading, fetch_world_bank_macro,
     fetch_market_context, fetch_rbi_repo_rate, fetch_risk_data, fetch_technical_data,
-    fetch_earnings_data, fetch_institutional_data
+    fetch_earnings_data, fetch_institutional_data, fetch_sector_peers,
+    fetch_market_breadth
 )
+from data.governance_data import fetch_governance_data
+from data.options_data import fetch_options_signals
 
 async def run_stock_analysis(company_name: str):
     """
@@ -33,11 +36,16 @@ async def run_stock_analysis(company_name: str):
     # Provide a mock Nifty DataFrame for Beta calculations to prevent crashing if offline
     nifty_mock = hist_df.copy() if not hist_df.empty else None
     
-    risk_data, tech_data, earnings_data, institutional_data = await asyncio.gather(
+    # Get sector for peer comparison
+    sector = market_data.get("fundamental_data", {}).get("sector", "")
+    
+    risk_data, tech_data, earnings_data, institutional_data, peer_data, market_breadth = await asyncio.gather(
         fetch_risk_data(ticker, hist_df, nifty_mock),
         fetch_technical_data(ticker, hist_df),
         fetch_earnings_data(ticker),
         fetch_institutional_data(ticker),
+        fetch_sector_peers(ticker, sector),
+        fetch_market_breadth(),
     )
     
     yield {"event": "status", "data": "Scraping Sentiment, News & FII/DII datastreams..."}
@@ -45,11 +53,13 @@ async def run_stock_analysis(company_name: str):
     gdelt_data = await asyncio.to_thread(fetch_gdelt_sentiment, company_name)
     fii_dii = await asyncio.to_thread(fetch_fii_dii_data)
     
-    yield {"event": "status", "data": "Fetching Macroeconomic & Governance context..."}
+    yield {"event": "status", "data": "Fetching Macroeconomic, Governance & Options context..."}
     nse_risk = await fetch_nse_risk_signals(ticker.split('.')[0])
-    bse_code = "500325" # Mocking BSE code mapping for now
     
-    gov_data = await fetch_bse_governance(bse_code)
+    # Fetch new governance data from Screener.in + old BSE governance as fallback
+    gov_screener = await asyncio.to_thread(fetch_governance_data, ticker)
+    options_data = await asyncio.to_thread(fetch_options_signals, ticker.split('.')[0])
+    
     insider_data = await fetch_nse_insider_trading(ticker.split('.')[0])
     
     macro_data = {
@@ -61,19 +71,10 @@ async def run_stock_analysis(company_name: str):
     # Extract screener data from market_fetch
     screener_data = market_data.get("screener_data", {})
     
-    # Combine Governance
-    promoter_holding_trend = "stable"
-    if screener_data and "Shareholding Pattern" in screener_data:
-        # Complex to parse generically, keeping placeholder logic for final gov data payload
-        pass
-        
+    # Build comprehensive governance data
     full_gov_data = {
-        "shareholding": gov_data.get("shareholding"),
-        "announcements": gov_data.get("announcements"),
+        **gov_screener,
         "insider_transactions": insider_data,
-        "promoter_holding_quarterly": [],
-        "trend": promoter_holding_trend,
-        "promoter_pledge_pct": 0
     }
 
     # Initialize state
@@ -94,6 +95,9 @@ async def run_stock_analysis(company_name: str):
         "governance_data": full_gov_data,
         "earnings_data": earnings_data,
         "institutional_data": institutional_data,
+        "options_data": options_data,
+        "market_breadth": market_breadth,
+        "peer_data": peer_data,
         "run_id": "test_run_123"
     }
 

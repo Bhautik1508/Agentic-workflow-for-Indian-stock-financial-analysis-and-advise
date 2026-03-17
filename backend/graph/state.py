@@ -46,6 +46,9 @@ class StockAnalysisState(TypedDict):
     governance_data: Optional[Dict]
     earnings_data: Optional[Dict]
     institutional_data: Optional[Dict]
+    options_data: Optional[Dict]
+    market_breadth: Optional[Dict]
+    peer_data: Optional[Dict]
     
     # Agent reports (populated as agents complete)
     financial_report: Optional[AgentReport]
