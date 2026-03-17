@@ -9,8 +9,8 @@ const QUICK_STOCKS = [
   { name: 'TCS', ticker: 'TCS.NS' },
   { name: 'HDFC Bank', ticker: 'HDFCBANK.NS' },
   { name: 'Infosys', ticker: 'INFY.NS' },
-  { name: 'Zomato', ticker: 'ZOMATO.NS' },
-  { name: 'Nykaa', ticker: 'NYKAA.NS' },
+  { name: 'Wipro', ticker: 'WIPRO.NS' },
+  { name: 'Bajaj Finance', ticker: 'BAJFINANCE.NS' },
 ];
 
 const AGENT_BADGES = [
