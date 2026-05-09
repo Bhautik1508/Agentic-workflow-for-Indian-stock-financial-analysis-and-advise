@@ -100,18 +100,45 @@ def test_full_state_passes_with_high_completeness():
 
 def test_missing_half_fundamentals_warns_but_does_not_abort():
     state = _full_state()
-    # Drop 4 of 10 fundamental fields → 60% completeness (still > 50% abort threshold)
+    # Drop 4 of 10 fundamental fields → fund=0.6, overall = 0.7*0.6 + 0.3*1.0 = 0.72.
+    # Well above the 0.30 default abort threshold.
     for k in ("debt_to_equity", "current_ratio", "ebitda_margin", "profit_margins"):
         state["fundamental_data"][k] = None
     q = evaluate_data_quality(state)
     assert q.fundamental_completeness == 0.6
-    assert q.abort is False              # 0.7 * 0.6 + 0.3 * 1.0 = 0.72 ≥ 0.5
+    assert q.abort is False
     assert "fundamental_data" in q.sparse_sources or q.sparse_sources == []  # may or may not warn
+
+
+def test_render_ip_partial_fundamentals_proceed_with_warnings():
+    """Regression: yfinance on Render's cloud IPs only returns ~2 of 10
+    fundamental fields even for blue chips. Overall completeness lands at
+    ~0.44 (0.7 × 0.2 + 0.3 × 1.0). The verdict must still be producible —
+    just flagged as low-data — so users get a verdict instead of an abort."""
+    state = {
+        "fundamental_data": {
+            "pe_ratio": 22.0,
+            "debt_to_equity": 0.31,
+            # 8 fields rate-limited away
+        },
+        "price_data": {
+            "current_price": 1437.9,
+            "week_52_high": 1500.0,
+            "week_52_low": 1100.0,
+        },
+    }
+    q = evaluate_data_quality(state)
+    assert q.fundamental_completeness == 0.2
+    assert q.price_completeness == 1.0
+    assert q.overall_completeness == 0.44
+    assert q.abort is False, "Render-IP partial data must not block the verdict"
+    assert "fundamental_data" in q.sparse_sources, "Sparse fund data must be surfaced as a warning"
 
 
 def test_almost_empty_state_aborts_with_honest_reason():
     state = {"fundamental_data": {"pe_ratio": 22.0}, "price_data": {}}
     q = evaluate_data_quality(state)
+    # fund=0.1, price=0.0 → overall = 0.07. Below any sane threshold.
     assert q.abort is True
     assert q.abort_reason and "completeness" in q.abort_reason.lower()
     assert len(q.missing_critical_fields) >= 9  # 9 of 10 fundamentals + 3 of 3 price
@@ -119,9 +146,18 @@ def test_almost_empty_state_aborts_with_honest_reason():
 
 def test_abort_threshold_is_configurable():
     state = _full_state()
-    # Require 99% completeness; full state should still pass at 100%
+    # Require 99% completeness; full state at 100% should still pass.
     q = evaluate_data_quality(state, abort_threshold=0.99)
     assert q.abort is False
+
+
+def test_abort_threshold_can_be_set_to_zero_to_disable_gate():
+    """Ops escape hatch: setting threshold=0 effectively turns the gate off."""
+    state = {"fundamental_data": {}, "price_data": {}}
+    q_strict = evaluate_data_quality(state, abort_threshold=0.30)
+    q_open = evaluate_data_quality(state, abort_threshold=0.0)
+    assert q_strict.abort is True
+    assert q_open.abort is False
 
 
 def test_empty_news_list_flagged_as_sparse_source():
@@ -229,8 +265,10 @@ def test_get_freshness_returns_none_for_unstamped():
 
 
 def test_collect_stale_sources_finds_only_stale():
-    now = datetime(2026, 5, 8, 12, 0, 0, tzinfo=IST)
-    fresh = stamp({}, "fresh.source", as_of=now)
+    # Use a moving baseline so this test doesn't expire if the wall clock
+    # advances past a hardcoded date.
+    now = now_ist()
+    fresh = stamp({}, "fresh.source", as_of=now - timedelta(hours=1))
     stale = stamp({}, "stale.source", as_of=now - timedelta(hours=48))
     state = {"a": fresh, "b": stale, "c": {"no_freshness": True}}
     found = collect_stale_sources(state)

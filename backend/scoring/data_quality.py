@@ -2,8 +2,16 @@
 
 The verdict is only as honest as the inputs. If yfinance returns mostly nulls
 for a thinly-traded stock, we should refuse to render a verdict instead of
-asking the LLM to extrapolate from a 30%-complete picture."""
+asking the LLM to extrapolate from a 30%-complete picture.
 
+Threshold tuning: yfinance is aggressive about rate-limiting cloud IPs (Render
+in particular). On those IPs, fundamentals routinely come back ~20% complete
+even for blue chips like RELIANCE. The agents have other data sources to
+fall back on (screener.in scrape, peer_data, locally-computed risk metrics),
+so the gate is set conservatively low — only abort when data is structurally
+unusable, not just thin."""
+
+import os
 from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, List, Optional
 
@@ -29,10 +37,26 @@ CRITICAL_PRICE_FIELDS = (
     "week_52_low",
 )
 
+
+def _env_threshold(name: str, default: float) -> float:
+    """Read a 0..1 threshold from an env var; fall back to default on bad input."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        v = float(raw)
+        return v if 0.0 <= v <= 1.0 else default
+    except ValueError:
+        return default
+
+
 # Below this completeness fraction we abort the run and tell the user honestly.
-DEFAULT_ABORT_THRESHOLD = 0.5
+# Calibrated so a Render-IP analysis with only ~20% fundamentals (overall ~0.44)
+# can still proceed; only structurally-broken runs (overall < 0.30) are blocked.
+# Override with DATA_QUALITY_ABORT_THRESHOLD env var.
+DEFAULT_ABORT_THRESHOLD = _env_threshold("DATA_QUALITY_ABORT_THRESHOLD", 0.30)
 # Below this we still proceed but flag the verdict as low-data confidence.
-DEFAULT_WARN_THRESHOLD = 0.7
+DEFAULT_WARN_THRESHOLD = _env_threshold("DATA_QUALITY_WARN_THRESHOLD", 0.50)
 
 
 @dataclass
