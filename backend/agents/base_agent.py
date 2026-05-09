@@ -18,46 +18,28 @@ def get_llm():
 
 import asyncio
 import random
+from llm import call_llm as _routed_call_llm
 
-async def call_llm_with_retry(client, messages, response_format={"type": "json_object"}, primary_model='llama-3.3-70b-versatile', fallback_model='llama-3.1-8b-instant'):
-    """Calls Groq API with robust fallback to a smaller model on Rate Limit (429) errors."""
-    try:
-        response = await client.chat.completions.create(
-            model=primary_model,
-            messages=messages,
-            temperature=0.1,
-            response_format=response_format
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        if "429" in str(e) or "rate limit" in str(e).lower() or "tokens" in str(e).lower():
-            # Add random jitter to stagger the 5 parallel agents
-            delay1 = random.uniform(3.0, 7.0)
-            logger.warning(f"Rate limit hit for {primary_model}. Retrying with {fallback_model} in {delay1:.1f} seconds.")
-            await asyncio.sleep(delay1)
-            try:
-                # Try with fallback
-                response = await client.chat.completions.create(
-                    model=fallback_model,
-                    messages=messages,
-                    temperature=0.1,
-                    response_format=response_format
-                )
-                return response.choices[0].message.content.strip()
-            except Exception as e2:
-                if "429" in str(e2) or "rate limit" in str(e2).lower() or "tokens" in str(e2).lower():
-                    delay2 = random.uniform(10.0, 20.0)
-                    logger.warning(f"Rate limit hit for {fallback_model}. Retrying again after {delay2:.1f} second cooldown.")
-                    await asyncio.sleep(delay2)
-                    response = await client.chat.completions.create(
-                        model=fallback_model,
-                        messages=messages,
-                        temperature=0.1,
-                        response_format=response_format
-                    )
-                    return response.choices[0].message.content.strip()
-                raise e2
-        raise e
+
+async def call_llm_with_retry(
+    client,
+    messages,
+    response_format=None,
+    primary_model='llama-3.3-70b-versatile',
+    fallback_model='llama-3.1-8b-instant',
+    *,
+    agent: str = "unknown",
+):
+    """Phase 3: thin wrapper that routes through `llm.router.call_llm` so every
+    call is recorded in the per-run telemetry contextvar."""
+    return await _routed_call_llm(
+        client,
+        messages,
+        agent=agent,
+        response_format=response_format,
+        primary_model=primary_model,
+        fallback_model=fallback_model,
+    )
 
 def parse_llm_json(response_content: str) -> dict:
     """Robustly parse JSON from LLM response, handling markdown fences."""
@@ -85,29 +67,34 @@ def parse_llm_json(response_content: str) -> dict:
             
     raise ValueError(f"Could not parse JSON from LLM response: {content[:200]}")
 
-def _fallback_report(agent_name: str, score: float, error: str) -> AgentReport:
+def _fallback_report(agent_name: str, error: str) -> AgentReport:
+    """Build a 'degraded' report. score=None signals the judge to drop this agent's
+    weight rather than averaging in a 5.0 placeholder that quietly drags verdicts."""
     return AgentReport(
         agent_name=agent_name,
         status=AgentStatus.ERROR,
-        summary=f"Analysis unavailable: {error[:100]}",
-        score=score,
-        key_findings=["Data temporarily unavailable"],
+        summary=f"Analysis unavailable: {error[:120]}",
+        score=None,
+        key_findings=[],
         risk_flags=[],
         signal_line="Analysis unavailable",
         data_table=[],
         confidence=0.0,
+        degraded=True,
+        error=error[:200],
         data={"error": error}
     )
 
 def agent_with_fallback(agent_name: str, default_score: float = 5.0):
+    """default_score kept for backwards compatibility but is no longer used —
+    failed agents now return degraded reports with score=None."""
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(state, *args, **kwargs):
             try:
                 return await func(state, *args, **kwargs)
             except Exception as e:
-                # Let's catch JSON errors as well inside this general block
                 logger.error(f"{agent_name} failed: {e}", exc_info=True)
-                return _fallback_report(agent_name, default_score, str(e))
+                return _fallback_report(agent_name, str(e))
         return wrapper
     return decorator

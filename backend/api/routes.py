@@ -6,6 +6,33 @@ import os
 
 router = APIRouter()
 
+@router.get("/verdict/{run_id}")
+async def get_frozen_verdict(run_id: str):
+    """Phase 5 — return a frozen verdict for sharing.
+
+    Reads the run log written at the end of a successful analysis. The shape
+    is intentionally close to the cached payload the SSE stream produces on
+    `complete`, so the frontend can hydrate the same components."""
+    from graph.run_log import read_run_log
+
+    record = read_run_log(run_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"No run log found for {run_id}")
+
+    return {
+        "run_id":          record.get("run_id"),
+        "ticker":          record.get("ticker"),
+        "company_name":    record.get("company_name"),
+        "timestamp_ist":   record.get("timestamp_ist"),
+        "duration_seconds": record.get("duration_seconds"),
+        "risk_profile":    (record.get("inputs_summary") or {}).get("risk_profile"),
+        "judge_report":    record.get("judge") or {},
+        "reports":         record.get("analyst_reports") or {},
+        "telemetry":       record.get("telemetry") or {},
+        "data_quality":    record.get("data_quality") or {},
+    }
+
+
 @router.get("/health")
 async def health_check():
     """Health check endpoint used by Render and monitoring tools."""
@@ -15,17 +42,60 @@ async def health_check():
         "environment": "production" if os.getenv("RENDER") else "development",
     }
 
+JUDGE_FIELDS = (
+    "final_decision",
+    "action",
+    "confidence_score",
+    "investment_thesis",
+    "key_risks",
+    "key_catalysts",
+    "conviction_level",
+    "max_entry_price",
+    "target_price_inr",
+    "stop_loss_inr",
+    "time_horizon",
+    "judge_score",
+    "score_attribution",
+    "strongest_pillar",
+    "weakest_pillar",
+    # Phase 2
+    "risk_profile",
+    "grounded_targets",
+    "veto",
+    "dissent_summary",
+    # Phase 3
+    "data_quality",
+    "stale_sources",
+    # Phase 5
+    "counter_factual",
+)
+
+
 @router.get("/analyze/{company_name}")
-async def analyze_stock(company_name: str):
-    """
-    Main analysis endpoint — returns SSE stream of agent results.
-    """
+async def analyze_stock(company_name: str, profile: str = "balanced"):
+    """Main analysis endpoint — returns SSE stream of agent results.
+
+    `profile` is one of conservative|balanced|aggressive (default: balanced)."""
+
     async def event_generator():
+        import time
+        from data.market_data import resolve_ticker
+        from data.cache import get_cached_analysis, save_analysis_to_cache
+        from graph.run_log import new_run_id, write_run_log
+        from scoring import get_profile
+
+        run_id = new_run_id()
+        profile_name, _ = get_profile(profile or "")
+        started = time.monotonic()
+        ticker = None
+        accumulated_reports: dict = {}
+        judge_payload: dict = {}
+        # Phase 3: harvested at the end of the run, written into cache + run log
+        run_telemetry: dict = {}
+        run_data_quality: dict = {}
+
         try:
-            from data.market_data import resolve_ticker
-            from data.cache import get_cached_analysis, save_analysis_to_cache
-            
-            # Resolve early to check the cache
+            # Resolve early to key the cache by canonical ticker (profile-aware)
             ticker = await resolve_ticker(company_name)
             if ticker == "INVALID":
                 yield {
@@ -33,77 +103,104 @@ async def analyze_stock(company_name: str):
                     "data": json.dumps({"detail": f"Could not find a valid Indian stock ticker for '{company_name}'. Please try a different name."})
                 }
                 return
-                
-            cached = get_cached_analysis(ticker)
+
+            cache_key = f"{ticker}::{profile_name}"
+            cached = get_cached_analysis(cache_key)
             if cached:
-                # If cached, we stream a "complete" event immediately
+                yield {
+                    "event": "start",
+                    "data": json.dumps({"run_id": run_id, "ticker": ticker, "risk_profile": profile_name, "cached": True})
+                }
                 yield {
                     "event": "complete",
                     "data": json.dumps(cached, default=str)
                 }
                 return
-                
-            final_report_saved = False
-            accumulated_reports = {}
-            async for event in run_stock_analysis(company_name):
-                # The LangGraph runner yields dicts with "event" and "data"/"state" keys
-                # sse-starlette expects a dict with "event" and "data" keys (stringified)
-                
-                # Check if it's a node_update to stringify the AgentReport payload
+
+            yield {
+                "event": "start",
+                "data": json.dumps({"run_id": run_id, "ticker": ticker, "risk_profile": profile_name, "cached": False})
+            }
+
+            async for event in run_stock_analysis(company_name, run_id=run_id, risk_profile=profile_name):
                 if event["event"] == "node_update":
-                    # Sanitize the payload: strip out large raw datasets to prevent json.dumps crashes
                     safe_state = {}
                     for k, v in event["state"].items():
-                        if k.endswith("_report") or k in [
-                            "final_decision", "action",
-                            "confidence_score", "investment_thesis",
-                            "key_risks", "key_catalysts",
-                            "conviction_level", "max_entry_price"
-                        ]:
+                        if k.endswith("_report") or k in JUDGE_FIELDS:
                             safe_state[k] = v
                             if k.endswith("_report"):
                                 accumulated_reports[k] = v
-                    
-                    # For caching, detect the judge node
+
                     if event["node"] == "judge_node" and "final_decision" in event["state"]:
-                        # Save the final decision and accumulated reports to cache
-                        cached_payload = {
-                            "message": "Analysis Finished",
-                            "reports": accumulated_reports,
-                            "judge_report": {
-                                "final_decision": event["state"].get("final_decision", "HOLD"),
-                                "action": event["state"].get("action", "HOLD"),
-                                "confidence_score": event["state"].get("confidence_score", 0),
-                                "investment_thesis": event["state"].get("investment_thesis", ""),
-                                "key_risks": event["state"].get("key_risks", []),
-                                "key_catalysts": event["state"].get("key_catalysts", []),
-                                "conviction_level": event["state"].get("conviction_level", "medium"),
-                                "max_entry_price": event["state"].get("max_entry_price")
-                            }
-                        }
-                        save_analysis_to_cache(ticker, cached_payload)
-                        final_report_saved = True
+                        judge_payload = {f: event["state"].get(f) for f in JUDGE_FIELDS}
 
                     yield {
                         "event": "node_update",
-                        "data": json.dumps({
-                            "node": event["node"],
-                            "state": safe_state
-                        }, default=str) # Handle un-serializable enums/objects
+                        "data": json.dumps(
+                            {"node": event["node"], "state": safe_state},
+                            default=str,
+                        ),
                     }
+                elif event["event"] == "telemetry":
+                    # Phase 3: terminal telemetry event from the runner
+                    run_telemetry = event.get("data") or {}
+                    yield {"event": "telemetry", "data": json.dumps(run_telemetry, default=str)}
+                elif event["event"] == "error":
+                    # Forward error events; data may be a dict (e.g. data-quality abort) or a string
+                    err_data = event.get("data", {})
+                    if isinstance(err_data, dict):
+                        run_data_quality = err_data.get("data_quality") or {}
+                        yield {"event": "error", "data": json.dumps(err_data, default=str)}
+                    else:
+                        yield {"event": "error", "data": json.dumps({"detail": str(err_data)})}
+                    return
                 else:
-                    # Regular status or complete events
                     yield {
                         "event": event["event"],
                         "data": json.dumps({"message": event["data"]}) if isinstance(event.get("data"), str) else json.dumps(event.get("data", {}))
                     }
+
+            # Cache the full result *after* the run is complete so we have telemetry to attach.
+            cached_payload = {
+                "message": "Analysis Finished",
+                "reports": accumulated_reports,
+                "judge_report": judge_payload,
+                "run_id": run_id,
+                "ticker": ticker,
+                "risk_profile": profile_name,
+                "telemetry": run_telemetry,
+                "data_quality": judge_payload.get("data_quality") or run_data_quality,
+            }
+            if judge_payload:
+                save_analysis_to_cache(cache_key, cached_payload)
         except Exception as e:
-            # Send an error event over the SSE stream before closing
             yield {
                 "event": "error",
                 "data": json.dumps({"detail": str(e)})
             }
-            
+            write_run_log(
+                run_id, ticker or "UNKNOWN", company_name,
+                inputs_summary={"risk_profile": profile_name},
+                analyst_reports=accumulated_reports,
+                judge_payload=judge_payload,
+                error=str(e),
+                duration_seconds=round(time.monotonic() - started, 2),
+                telemetry=run_telemetry,
+                data_quality=judge_payload.get("data_quality") or run_data_quality,
+            )
+            return
+
+        # Successful completion: persist run log for backtesting / debugging.
+        write_run_log(
+            run_id, ticker or "UNKNOWN", company_name,
+            inputs_summary={"risk_profile": profile_name},
+            analyst_reports=accumulated_reports,
+            judge_payload=judge_payload,
+            duration_seconds=round(time.monotonic() - started, 2),
+            telemetry=run_telemetry,
+            data_quality=judge_payload.get("data_quality") or run_data_quality,
+        )
+
     return EventSourceResponse(event_generator())
 
 @router.get("/search/{query}")
@@ -135,9 +232,14 @@ async def search_companies(query: str):
 
 @router.get("/price-history/{ticker}")
 async def get_price_history(ticker: str, period: str = "1y"):
-    """Fetch OHLCV price history with SMA overlays for charting."""
+    """Fetch OHLCV price history with SMA overlays for charting.
+
+    Accepts either a resolved exchange ticker (e.g. RELIANCE.NS) or a free-form
+    company name (e.g. "Tata Motors"); names without an exchange suffix are
+    resolved via the same `resolve_ticker` path the analysis flow uses."""
     import yfinance as yf
     import math
+    from data.market_data import resolve_ticker
 
     # Validate period
     valid_periods = {"1mo", "3mo", "6mo", "1y"}
@@ -145,13 +247,24 @@ async def get_price_history(ticker: str, period: str = "1y"):
         period = "1y"
 
     try:
-        # Append .NS if not already suffixed
-        symbol = ticker if "." in ticker else f"{ticker}.NS"
+        # If the caller passed a free-form name (no exchange suffix), resolve it
+        # the same way /api/analyze does — converts "Tata Motors" → "TATAMOTORS.NS".
+        if "." in ticker:
+            symbol = ticker
+        else:
+            resolved = await resolve_ticker(ticker)
+            if resolved == "INVALID":
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Could not resolve a NSE/BSE ticker for '{ticker}'.",
+                )
+            symbol = resolved
+
         stock = yf.Ticker(symbol)
         hist = stock.history(period=period)
 
         if hist.empty:
-            raise HTTPException(status_code=404, detail=f"No price data found for {ticker}")
+            raise HTTPException(status_code=404, detail=f"No price data found for {symbol}")
 
         # Compute SMAs
         hist["SMA20"] = hist["Close"].rolling(window=20).mean()

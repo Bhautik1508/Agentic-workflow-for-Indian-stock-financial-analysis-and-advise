@@ -2,15 +2,17 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { History, ChevronLeft, ChevronRight, Trash2, ArrowUp, ArrowDown, Minus } from 'lucide-react';
-import { loadHistory, type HistoryItem } from '@/hooks/useAnalysis';
+import { History, ChevronLeft, ChevronRight, Trash2, ArrowUp, ArrowDown, Minus, ChevronsUp, ChevronsDown } from 'lucide-react';
+import { loadHistory, type HistoryItem, type Verdict } from '@/hooks/useAnalysis';
 import Link from 'next/link';
 
-const DECISION_CONFIG = {
-    BUY: { color: '#00ff9f', icon: ArrowUp, bg: 'bg-[#00ff9f]/10', text: 'text-[#00ff9f]' },
-    SELL: { color: '#ff4060', icon: ArrowDown, bg: 'bg-[#ff4060]/10', text: 'text-[#ff4060]' },
-    HOLD: { color: '#ffd700', icon: Minus, bg: 'bg-[#ffd700]/10', text: 'text-[#ffd700]' },
-} as const;
+const DECISION_CONFIG: Record<Verdict, { color: string; icon: typeof ArrowUp; bg: string; text: string }> = {
+    STRONG_BUY: { color: '#166534', icon: ChevronsUp,   bg: 'bg-[#DCFCE7]', text: 'text-[#166534]' },
+    BUY:        { color: '#15803D', icon: ArrowUp,      bg: 'bg-[#ECFDF3]', text: 'text-[#15803D]' },
+    HOLD:       { color: '#A16207', icon: Minus,        bg: 'bg-[#FEF7E0]', text: 'text-[#A16207]' },
+    SELL:       { color: '#B91C1C', icon: ArrowDown,    bg: 'bg-[#FEE7E7]', text: 'text-[#B91C1C]' },
+    STRONG_SELL:{ color: '#991B1B', icon: ChevronsDown, bg: 'bg-[#FCD7D7]', text: 'text-[#991B1B]' },
+};
 
 function formatRelativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -147,7 +149,8 @@ export function HistorySidebar() {
                                                             )}
                                                             {item.confidence_score !== null && (
                                                                 <span className="text-[9px] text-text-dim font-mono">
-                                                                    {(item.confidence_score * 10).toFixed(0)}%
+                                                                    {/* Wire format is 0..1; defend against legacy entries by clamping. */}
+                                                                    {Math.round(Math.max(0, Math.min(1, item.confidence_score)) * 100)}%
                                                                 </span>
                                                             )}
                                                         </div>

@@ -14,17 +14,19 @@ class AgentStatus(str, Enum):
     COMPLETE = "complete"
     ERROR = "error"
 
-class AgentReport(TypedDict):
+class AgentReport(TypedDict, total=False):
     agent_name: str
     status: AgentStatus
     summary: str
-    score: float          # 0-10 (10 = most bullish)
+    score: Optional[float]   # 0-10 (10 = most bullish). None when degraded.
     key_findings: List[str]
     risk_flags: List[str]
-    signal_line: str      # ≤8 word signal for collapsed card
+    signal_line: str         # ≤8 word signal for collapsed card
     data_table: List[Dict[str, str]]  # [{label, value, signal}] max 5 rows
     data: Dict[str, Any]
-    confidence: float     # 0-1
+    confidence: float        # 0-1
+    degraded: bool           # True when the agent could not produce a real score
+    error: Optional[str]     # Short error message when degraded
 
 class StockAnalysisState(TypedDict):
     # Input
@@ -62,7 +64,7 @@ class StockAnalysisState(TypedDict):
     # Final judgment
     final_decision: Optional[Decision]
     action: Optional[str]
-    confidence_score: float       # 0-100
+    confidence_score: float       # 0-1 canonical wire format
     target_price_inr: Optional[float]
     max_entry_price: Optional[float]
     stop_loss_inr: Optional[float]
@@ -71,7 +73,18 @@ class StockAnalysisState(TypedDict):
     key_risks: List[str]
     key_catalysts: List[str]
     conviction_level: Optional[str]
-    
+
+    # Phase 2 — grounded targets + investor profile + governance vetos
+    risk_profile: Optional[str]              # "conservative" | "balanced" | "aggressive"
+    grounded_targets: Optional[Dict[str, Any]]
+    veto: Optional[Dict[str, Any]]
+    dissent_summary: Optional[str]
+
+    # Phase 3 — data trust
+    data_quality: Optional[Dict[str, Any]]
+    llm_telemetry: Optional[Dict[str, Any]]
+    stale_sources: Optional[List[str]]
+
     # Metadata
     error: Optional[str]
     run_id: str
