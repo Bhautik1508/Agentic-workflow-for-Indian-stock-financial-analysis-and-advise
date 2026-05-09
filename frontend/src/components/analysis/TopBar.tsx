@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getApiUrl } from '@/config';
+import { inr } from '@/lib/format';
 
 interface TopBarProps {
     ticker: string;
@@ -48,52 +49,57 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
 
     const decodedTicker = decodeURIComponent(ticker);
     const isPositive = price ? price.change >= 0 : true;
-    const changeColor = isPositive ? 'text-[#3d9970]' : 'text-[#c0444a]';
+    const changeColor = isPositive ? 'text-[#15803D]' : 'text-[#B91C1C]';
     const arrow = isPositive ? '▲' : '▼';
 
     return (
-        <div className="sticky top-0 z-50 w-full bg-[#07090f]/95 backdrop-blur-md border-b border-white/[0.06]">
-            <div className="max-w-7xl mx-auto h-12 px-4 md:px-6 flex items-center justify-between">
-                {/* Left: Back + Ticker */}
-                <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-50 w-full bg-[#FAFAF7]/95 backdrop-blur-md border-b border-[#E5E3DB]">
+            <div className="max-w-6xl mx-auto h-14 px-4 md:px-8 flex items-center justify-between gap-4">
+                {/* Left: brand + ticker */}
+                <div className="flex items-center gap-4 min-w-0">
                     <Link
                         href="/"
-                        className="text-[#7888a5] hover:text-[#dce4f5] transition-colors"
+                        className="text-[#7A7F88] hover:text-[#1A1B1E] transition-colors shrink-0"
+                        aria-label="Back to home"
                     >
                         <ArrowLeft size={16} />
                     </Link>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold tracking-wide text-[#dce4f5]">
+                    <Link href="/" className="hidden md:flex items-center gap-2 shrink-0">
+                        <span className="font-serif text-[16px] font-semibold tracking-tight text-[#1A1B1E]">StockSage</span>
+                        <span className="w-px h-4 bg-[#E5E3DB]" />
+                    </Link>
+                    <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-serif text-[17px] font-semibold text-[#1A1B1E] truncate">
                             {decodedTicker}
                         </span>
-                        <span className="text-[9px] font-mono tracking-widest text-[#5a6480] border border-white/[0.08] rounded px-1.5 py-0.5">
+                        <span className="text-[10px] font-mono tracking-widest text-[#7A7F88] border border-[#E5E3DB] rounded px-1.5 py-0.5 shrink-0">
                             {exchange}
                         </span>
                     </div>
                 </div>
 
-                {/* Right: Price + Change + Timestamp */}
-                <div className="flex items-center gap-4">
+                {/* Right: live price + timestamp */}
+                <div className="flex items-center gap-4 shrink-0">
                     {price && (
-                        <div className="flex items-center gap-2">
-                            <span className="font-dm-mono text-sm font-medium text-[#dce4f5]">
-                                ₹{price.current_price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div className="flex items-baseline gap-2">
+                            <span className="font-tnum text-[15px] font-medium text-[#1A1B1E]">
+                                {inr(price.current_price, { fractionDigits: 2 })}
                             </span>
-                            <span className={`font-dm-mono text-xs ${changeColor}`}>
+                            <span className={`font-tnum text-[12px] ${changeColor}`}>
                                 {isPositive ? '+' : ''}{price.change_pct.toFixed(2)}% {arrow}
                             </span>
                         </div>
                     )}
                     {timestamp && (
                         <>
-                            <div className="w-px h-4 bg-white/[0.08]" />
-                            <span className="text-[10px] font-mono text-[#5a6480]">
+                            <div className="hidden md:block w-px h-4 bg-[#E5E3DB]" />
+                            <span className="hidden md:inline text-[11px] font-mono text-[#7A7F88]">
                                 {timestamp}
                             </span>
                         </>
                     )}
                 </div>
             </div>
-        </div>
+        </header>
     );
 }

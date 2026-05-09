@@ -74,18 +74,18 @@ export default function SearchBar() {
 
     return (
         <div className="relative w-full max-w-2xl mx-auto z-50">
-            {/* Search Input */}
+            {/* Search Input — editorial light */}
             <motion.div
                 animate={{
                     boxShadow: isFocused
-                        ? '0 0 0 1px rgba(0,212,255,0.6), 0 0 30px rgba(0,212,255,0.12), 0 0 60px rgba(0,212,255,0.04)'
-                        : '0 0 0 1px rgba(26,37,64,0.8)',
+                        ? '0 0 0 1px rgba(30,64,175,0.45), 0 6px 22px rgba(26,27,30,0.06)'
+                        : '0 0 0 1px #E5E3DB, 0 1px 2px rgba(26,27,30,0.03)',
                 }}
-                transition={{ duration: 0.25 }}
-                className="relative flex items-center bg-surface rounded-full overflow-hidden"
+                transition={{ duration: 0.2 }}
+                className="relative flex items-center bg-white rounded-full overflow-hidden"
             >
-                <div className="pl-5 text-text-muted">
-                    <Search size={20} className={isFocused ? 'text-primary transition-colors duration-200' : ''} />
+                <div className="pl-5 text-[#7A7F88]">
+                    <Search size={18} className={isFocused ? 'text-[#1E40AF] transition-colors duration-200' : ''} />
                 </div>
 
                 <input
@@ -100,13 +100,13 @@ export default function SearchBar() {
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Search for an Indian company (e.g., RELIANCE, TCS)..."
-                    className="w-full bg-transparent py-4 px-4 text-base text-foreground outline-none placeholder:text-text-dim"
+                    placeholder="Search any NSE/BSE company — e.g. Reliance, TCS, Lupin"
+                    className="w-full bg-transparent py-4 px-4 text-[15px] text-[#1A1B1E] outline-none placeholder:text-[#B6B8B8]"
                 />
 
                 <div className="pr-4 flex items-center gap-2">
-                    {isLoading && <Loader2 size={18} className="animate-spin text-primary" />}
-                    <kbd className="hidden sm:inline-flex px-2 py-1 text-[10px] font-mono text-text-dim bg-background/60 rounded border border-border/60 tracking-wider">
+                    {isLoading && <Loader2 size={16} className="animate-spin text-[#1E40AF]" />}
+                    <kbd className="hidden sm:inline-flex px-2 py-0.5 text-[10px] font-mono text-[#7A7F88] bg-[#F2F1EB] rounded border border-[#E5E3DB] tracking-wider">
                         ENTER
                     </kbd>
                 </div>
@@ -119,7 +119,7 @@ export default function SearchBar() {
                         initial={{ opacity: 0, y: -5 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -5 }}
-                        className="absolute top-full mt-2 w-full text-center text-danger text-xs font-medium"
+                        className="absolute top-full mt-2 w-full text-center text-[#B91C1C] text-xs font-medium"
                     >
                         {searchError}
                     </motion.div>
@@ -130,16 +130,16 @@ export default function SearchBar() {
             <AnimatePresence>
                 {showDropdown && (
                     <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute top-full mt-2 w-full bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 6 }}
+                        transition={{ duration: 0.18 }}
+                        className="absolute top-full mt-2 w-full bg-white border border-[#E5E3DB] rounded-2xl shadow-lg overflow-hidden"
                     >
                         {isLoading && results.length === 0 && (
-                            <div className="flex items-center justify-center gap-2 py-6 text-text-muted text-sm">
-                                <Loader2 size={16} className="animate-spin text-primary" />
-                                Searching...
+                            <div className="flex items-center justify-center gap-2 py-6 text-[#7A7F88] text-sm">
+                                <Loader2 size={14} className="animate-spin text-[#1E40AF]" />
+                                Searching…
                             </div>
                         )}
 
@@ -151,25 +151,25 @@ export default function SearchBar() {
                                     handleSelect(result.ticker.replace('.NS', '').replace('.BO', ''));
                                 }}
                                 onMouseEnter={() => setHighlightedIndex(idx)}
-                                className={`flex items-center justify-between px-5 py-3.5 cursor-pointer transition-colors group ${highlightedIndex === idx
-                                    ? 'bg-primary/8'
-                                    : 'hover:bg-white/[0.03]'
+                                className={`flex items-center justify-between px-5 py-3 cursor-pointer transition-colors ${highlightedIndex === idx
+                                    ? 'bg-[#F0F4FB]'
+                                    : 'hover:bg-[#FAFAF7]'
                                     }`}
                             >
                                 <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                        <TrendingUp size={14} className="text-primary" />
+                                    <div className="w-8 h-8 rounded-md bg-[#F0F4FB] flex items-center justify-center flex-shrink-0">
+                                        <TrendingUp size={14} className="text-[#1E40AF]" />
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-foreground font-medium text-sm truncate">
+                                        <p className="text-[#1A1B1E] font-medium text-sm truncate">
                                             {result.name}
                                         </p>
                                         <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-xs font-mono text-text-muted">
+                                            <span className="text-xs font-mono text-[#7A7F88]">
                                                 {result.ticker}
                                             </span>
                                             {result.sector && (
-                                                <span className="text-[10px] text-text-dim truncate max-w-[140px]">
+                                                <span className="text-[10px] text-[#B6B8B8] truncate max-w-[140px]">
                                                     {result.sector}
                                                 </span>
                                             )}
@@ -178,11 +178,10 @@ export default function SearchBar() {
                                 </div>
 
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                                    {/* Exchange badge */}
                                     <span
                                         className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${result.exchange === 'NSE'
-                                            ? 'bg-primary/15 text-primary'
-                                            : 'bg-warning/15 text-warning'
+                                            ? 'bg-[#F0F4FB] text-[#1E40AF]'
+                                            : 'bg-[#FEF7E0] text-[#A16207]'
                                             }`}
                                     >
                                         {result.exchange || 'NSE'}
@@ -190,8 +189,8 @@ export default function SearchBar() {
                                     <ArrowRight
                                         size={14}
                                         className={`transition-all duration-200 ${highlightedIndex === idx
-                                            ? 'text-primary translate-x-0.5'
-                                            : 'text-text-dim'
+                                            ? 'text-[#1E40AF] translate-x-0.5'
+                                            : 'text-[#B6B8B8]'
                                             }`}
                                     />
                                 </div>

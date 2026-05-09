@@ -1,99 +1,224 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap');
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────
+   Phase 4 — Direction A: Premium Research Brief
+   Editorial light theme. Cream paper, ink-black text, deep accents.
+   Reads like a broker note, not a trading terminal.
+   ───────────────────────────────────────────────────────────────── */
+
 @theme {
-  /* ─── Backgrounds ─── */
-  --color-background: #07090f;
-  --color-foreground: #dce4f5;
+  /* ─── Surfaces ─── */
+  --color-paper:        #FAFAF7;   /* primary surface */
+  --color-paper-2:      #F2F1EB;   /* inset / muted surface */
+  --color-paper-3:      #E9E7DF;   /* deepest inset */
+  --color-card:         #FFFFFF;   /* cards on top of paper */
 
-  --color-surface: #0c0f19;
-  --color-surface-hover: #111627;
-  --color-elevated: #111627;
-  --color-input: #0e1120;
+  /* ─── Ink (text) ─── */
+  --color-ink:          #1A1B1E;   /* primary text */
+  --color-ink-2:        #4A4D55;   /* secondary */
+  --color-ink-3:        #7A7F88;   /* tertiary / micro */
+  --color-ink-4:        #B6B8B8;   /* disabled / hint */
 
-  /* ─── Borders ─── */
-  --color-border: rgba(255, 255, 255, 0.06);
-  --color-border-subtle: rgba(255, 255, 255, 0.03);
-  --color-border-accent: rgba(91, 138, 240, 0.25);
+  /* ─── Rules / borders ─── */
+  --color-rule:         #E5E3DB;   /* hairline borders */
+  --color-rule-strong:  #C6C3B8;
+  --color-rule-soft:    #EFEDE5;
 
-  /* ─── Accent — ONE color, used sparingly ─── */
-  --color-accent: #5b8af0;
-  --color-accent-dim: rgba(91, 138, 240, 0.12);
-  --color-accent-glow: rgba(91, 138, 240, 0.06);
+  /* ─── Single accent — used sparingly ─── */
+  --color-accent:       #1E40AF;   /* deep editorial blue */
+  --color-accent-2:     #2D5DD0;
+  --color-accent-soft:  #E5EBF8;
+  --color-accent-tint:  #F0F4FB;
 
-  /* ─── Text ─── */
-  --color-text-primary: #dce4f5;
-  --color-text-secondary: #5a6480;
-  --color-text-tertiary: #343a4f;
-  --color-text-mono: #8896b3;
+  /* ─── Verdict tones — desaturated, editorial ─── */
+  --color-strong-buy:   #166534;
+  --color-buy:          #15803D;
+  --color-hold:         #A16207;
+  --color-sell:         #B91C1C;
+  --color-strong-sell:  #991B1B;
 
-  /* ─── Signal colors — DESATURATED ─── */
-  --color-signal-buy: #3d9970;
-  --color-signal-sell: #c0444a;
-  --color-signal-hold: #8a7a40;
-  --color-signal-neutral: #3a4460;
+  --color-strong-buy-soft:   #DCFCE7;
+  --color-buy-soft:          #ECFDF3;
+  --color-hold-soft:         #FEF7E0;
+  --color-sell-soft:         #FEE7E7;
+  --color-strong-sell-soft:  #FCD7D7;
 
   /* ─── Score bars ─── */
-  --color-score-high: rgba(61, 153, 112, 0.70);
-  --color-score-mid: rgba(138, 122, 64, 0.70);
-  --color-score-low: rgba(192, 68, 74, 0.70);
+  --color-score-high: #15803D;
+  --color-score-mid:  #A16207;
+  --color-score-low:  #B91C1C;
 
-  /* ─── Chart ─── */
-  --color-chart-up: #3a7a5e;
-  --color-chart-down: #7a3a40;
-  --color-chart-vol-up: rgba(58, 122, 94, 0.35);
-  --color-chart-vol-down: rgba(122, 58, 64, 0.35);
-  --color-chart-sma20: rgba(91, 138, 240, 0.5);
-  --color-chart-sma50: rgba(180, 140, 80, 0.5);
-  --color-chart-grid: rgba(255, 255, 255, 0.03);
-  --color-chart-axis: #343a4f;
+  /* ─── Chart palette (light theme) ─── */
+  --color-chart-up:        #15803D;
+  --color-chart-down:      #B91C1C;
+  --color-chart-vol-up:    rgba(21, 128, 61, 0.18);
+  --color-chart-vol-down:  rgba(185, 28, 28, 0.18);
+  --color-chart-sma20:     rgba(30, 64, 175, 0.55);
+  --color-chart-sma50:     rgba(161, 98, 7, 0.55);
+  --color-chart-grid:      rgba(26, 27, 30, 0.06);
+  --color-chart-axis:      #7A7F88;
+  --color-chart-target:    #166534;
+  --color-chart-stop:      #991B1B;
 
-  /* ─── Legacy compat (used by landing page) ─── */
-  --color-primary: #5b8af0;
-  --color-primary-dark: #4070d0;
-  --color-success: #3d9970;
-  --color-warning: #8a7a40;
-  --color-danger: #c0444a;
-  --color-text-muted: #5a6480;
-  --color-text-dim: #343a4f;
+  /* ─── Legacy aliases (so old refs in landing/etc keep compiling) ─── */
+  --color-background:       #FAFAF7;
+  --color-foreground:       #1A1B1E;
+  --color-surface:          #FFFFFF;
+  --color-surface-hover:    #F2F1EB;
+  --color-elevated:         #FFFFFF;
+  --color-input:            #FFFFFF;
+  --color-border:           #E5E3DB;
+  --color-border-subtle:    #EFEDE5;
+  --color-border-accent:    rgba(30, 64, 175, 0.30);
+  --color-accent-dim:       rgba(30, 64, 175, 0.10);
+  --color-accent-glow:      rgba(30, 64, 175, 0.06);
+  --color-text-primary:     #1A1B1E;
+  --color-text-secondary:   #4A4D55;
+  --color-text-tertiary:    #7A7F88;
+  --color-text-mono:        #4A4D55;
+  --color-signal-buy:       #15803D;
+  --color-signal-sell:      #B91C1C;
+  --color-signal-hold:      #A16207;
+  --color-signal-neutral:   #7A7F88;
+  --color-primary:          #1E40AF;
+  --color-primary-dark:     #173285;
+  --color-success:          #15803D;
+  --color-warning:          #A16207;
+  --color-danger:           #B91C1C;
+  --color-text-muted:       #4A4D55;
+  --color-text-dim:         #7A7F88;
 
   /* ─── Fonts ─── */
-  --font-sans: 'DM Sans', var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'DM Mono', var(--font-dm-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif:  'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-sans:   'Inter', var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:   'DM Mono', var(--font-dm-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 :root {
-  --background: #07090f;
-  --foreground: #dce4f5;
+  --background: #FAFAF7;
+  --foreground: #1A1B1E;
 }
 
 /* ─── Base body ─── */
+html, body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+}
+
 body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
   font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   position: relative;
+  font-feature-settings: "ss01", "cv11";
 }
 
-/* ─── Subtle grid overlay ─── */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 60px 60px;
+/* ─── Typography ─── */
+.font-serif {
+  font-family: var(--font-serif);
+  font-feature-settings: "lnum", "tnum";
+  letter-spacing: -0.005em;
+}
+
+.heading-display {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 36px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
+.heading-section {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--color-ink);
+}
+
+.heading-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  font-weight: 500;
+}
+
+.text-lede {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--color-ink-2);
+  font-weight: 400;
+}
+
+.text-body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink-2);
+}
+
+.text-small {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink-2);
+}
+
+.text-micro {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-ink-3);
+}
+
+/* ─── Tabular numerals ─── */
+.font-dm-mono,
+.font-mono-num,
+.font-tnum,
+.tabular {
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums;
+}
+
+.font-dm-mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+.font-mono-num {
+  font-family: var(--font-mono);
+}
+
+/* ─── Hairline divider ─── */
+.divider {
+  border-top: 1px solid var(--color-rule);
+}
+
+/* ─── Card ─── */
+.card-paper {
+  background: var(--color-card);
+  border: 1px solid var(--color-rule);
+  border-radius: 8px;
+}
+
+/* ─── Gradient text (legacy landing page) ─── */
+.text-gradient {
+  background: linear-gradient(135deg, #1E40AF 0%, #2D5DD0 60%, #3F73E0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* ─── Scrollbar ─── */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -101,59 +226,24 @@ body::before {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
+  background: var(--color-rule-strong);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--color-ink-3);
 }
 
-/* ─── Utility classes ─── */
-.font-dm-mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-
-.font-mono-num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ─── Gradient text (landing page) ─── */
-.text-gradient {
-  background: linear-gradient(135deg, #5b8af0 0%, #7ba4ff 50%, #a0b8ff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ─── Animated pulse dots ─── */
+/* ─── Pulse dots (loading) ─── */
 @keyframes pulseDot {
-
-  0%,
-  80%,
-  100% {
-    opacity: 0.15;
-  }
-
-  40% {
-    opacity: 0.8;
-  }
+  0%, 80%, 100% { opacity: 0.2; }
+  40%           { opacity: 0.85; }
 }
-
 .pulse-dot {
   animation: pulseDot 1.2s ease-in-out infinite;
 }
-
-.pulse-dot:nth-child(2) {
-  animation-delay: 0.4s;
-}
-
-.pulse-dot:nth-child(3) {
-  animation-delay: 0.8s;
-}
+.pulse-dot:nth-child(2) { animation-delay: 0.4s; }
+.pulse-dot:nth-child(3) { animation-delay: 0.8s; }
 
 /* ─── Score bar animation ─── */
 .score-bar-fill {
@@ -162,17 +252,57 @@ body::before {
 
 /* ─── Shimmer skeleton ─── */
 @keyframes shimmer {
-  0% {
-    background-position: -200px 0;
-  }
-
-  100% {
-    background-position: calc(200px + 100%) 0;
-  }
+  0%   { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
 }
-
 .skeleton-shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  background: linear-gradient(90deg, transparent, rgba(26, 27, 30, 0.06), transparent);
   background-size: 200px 100%;
   animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: rgba(30, 64, 175, 0.18);
+  color: var(--color-ink);
+}
+
+/* ─── Print: collapse to a one-page broker-style note ───────────────────── */
+@media print {
+  html, body {
+    background: #FFFFFF !important;
+    font-size: 11.5pt;
+  }
+  /* Hide nav/UX chrome */
+  .no-print,
+  header,
+  nav,
+  button,
+  [role="button"] {
+    display: none !important;
+  }
+  /* But keep links visible (so the share URL prints) */
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #4A4D55;
+  }
+  a.no-href-print[href]::after {
+    content: "";
+  }
+  .card-paper {
+    border: 1px solid #C6C3B8 !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    background: #FFFFFF !important;
+  }
+  section {
+    page-break-inside: avoid;
+  }
+  .heading-display {
+    font-size: 26pt;
+  }
+  .heading-section {
+    font-size: 16pt;
+  }
 }

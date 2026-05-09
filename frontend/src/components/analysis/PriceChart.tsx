@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import {
     ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+    ReferenceLine,
 } from 'recharts';
 import { getApiUrl } from '@/config';
+import { inr } from '@/lib/format';
 
 interface PriceRecord {
     date: string;
@@ -19,6 +21,8 @@ interface PriceRecord {
 
 interface PriceChartProps {
     ticker: string;
+    targetPrice?: number | null;
+    stopLoss?: number | null;
 }
 
 const PERIODS = [
@@ -28,17 +32,19 @@ const PERIODS = [
     { label: '1Y', value: '1y' },
 ];
 
-// Muted chart colors
+// Editorial light-theme palette
 const COLORS = {
-    up: '#3a7a5e',
-    down: '#7a3a40',
-    volUp: 'rgba(58, 122, 94, 0.35)',
-    volDown: 'rgba(122, 58, 64, 0.35)',
-    sma20: 'rgba(91, 138, 240, 0.5)',
-    sma50: 'rgba(180, 140, 80, 0.5)',
-    grid: 'rgba(255, 255, 255, 0.03)',
-    axisText: '#5a6480',
-    crosshair: 'rgba(255, 255, 255, 0.1)',
+    up:        '#15803D',
+    down:      '#B91C1C',
+    volUp:     'rgba(21, 128, 61, 0.18)',
+    volDown:   'rgba(185, 28, 28, 0.18)',
+    sma20:     'rgba(30, 64, 175, 0.55)',
+    sma50:     'rgba(161, 98, 7, 0.55)',
+    grid:      'rgba(26, 27, 30, 0.06)',
+    axisText:  '#7A7F88',
+    crosshair: 'rgba(26, 27, 30, 0.18)',
+    target:    '#166534',
+    stop:      '#991B1B',
 };
 
 function formatDate(dateStr: string) {
@@ -50,94 +56,131 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
-        <div className="bg-[#111627] border border-white/[0.06] rounded-lg px-3 py-2 shadow-xl">
-            <p className="text-[10px] text-[#7888a5] mb-1.5 font-mono">{d.date}</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] font-mono">
-                <span className="text-[#5a6480]">O</span>
-                <span className="text-[#dce4f5] text-right">₹{d.open?.toFixed(2)}</span>
-                <span className="text-[#5a6480]">H</span>
-                <span className="text-[#dce4f5] text-right">₹{d.high?.toFixed(2)}</span>
-                <span className="text-[#5a6480]">L</span>
-                <span className="text-[#dce4f5] text-right">₹{d.low?.toFixed(2)}</span>
-                <span className="text-[#5a6480]">C</span>
-                <span className="text-[#dce4f5] text-right">₹{d.close?.toFixed(2)}</span>
-                <span className="text-[#5a6480]">Vol</span>
-                <span className="text-[#dce4f5] text-right">{(d.volume / 1e6).toFixed(1)}M</span>
+        <div className="bg-white border border-[#E5E3DB] rounded-md px-3 py-2 shadow-md">
+            <p className="text-[11px] text-[#7A7F88] mb-1.5 font-mono">{d.date}</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] font-mono">
+                <span className="text-[#7A7F88]">O</span>
+                <span className="text-[#1A1B1E] text-right tabular">₹{d.open?.toFixed(2)}</span>
+                <span className="text-[#7A7F88]">H</span>
+                <span className="text-[#1A1B1E] text-right tabular">₹{d.high?.toFixed(2)}</span>
+                <span className="text-[#7A7F88]">L</span>
+                <span className="text-[#1A1B1E] text-right tabular">₹{d.low?.toFixed(2)}</span>
+                <span className="text-[#7A7F88]">C</span>
+                <span className="text-[#1A1B1E] text-right tabular">₹{d.close?.toFixed(2)}</span>
+                <span className="text-[#7A7F88]">Vol</span>
+                <span className="text-[#1A1B1E] text-right tabular">{(d.volume / 1e6).toFixed(1)}M</span>
             </div>
         </div>
     );
 }
 
-export function PriceChart({ ticker }: PriceChartProps) {
+export function PriceChart({ ticker, targetPrice = null, stopLoss = null }: PriceChartProps) {
     const [data, setData] = useState<PriceRecord[]>([]);
     const [period, setPeriod] = useState('1y');
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!ticker) return;
+        let cancelled = false;
         setLoading(true);
+        setError(null);
         const API_BASE_URL = getApiUrl();
-        fetch(`${API_BASE_URL}/api/price-history/${ticker}?period=${period}`)
-            .then((r) => r.json())
-            .then((json) => {
-                setData(json.data || []);
-                setLoading(false);
+        const url = `${API_BASE_URL}/api/price-history/${encodeURIComponent(ticker)}?period=${period}`;
+        fetch(url)
+            .then(async (r) => {
+                const json = await r.json().catch(() => ({} as { detail?: string; data?: unknown }));
+                if (cancelled) return;
+                if (!r.ok) {
+                    setError(json.detail ?? `Server returned ${r.status}`);
+                    setData([]);
+                } else {
+                    const rows = Array.isArray(json.data) ? (json.data as PriceRecord[]) : [];
+                    setData(rows);
+                    if (rows.length === 0) setError('No price data returned for this period.');
+                }
             })
-            .catch(() => setLoading(false));
+            .catch((e) => {
+                if (cancelled) return;
+                setError((e as Error).message ?? 'Failed to load price history.');
+                setData([]);
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => { cancelled = true; };
     }, [ticker, period]);
 
-    // Price range for Y axis
-    const prices = data.map((d) => [d.low, d.high]).flat().filter(Boolean);
-    const minPrice = prices.length ? Math.floor(Math.min(...prices) * 0.98) : 0;
-    const maxPrice = prices.length ? Math.ceil(Math.max(...prices) * 1.02) : 100;
+    // Price range for Y axis — include target/stop so reference lines fit on screen
+    const refLines = [targetPrice, stopLoss].filter(v => v !== null && v !== undefined) as number[];
+    const prices = [...data.map((d) => [d.low, d.high]).flat().filter(Boolean), ...refLines];
+    const minPrice = prices.length ? Math.floor(Math.min(...prices) * 0.97) : 0;
+    const maxPrice = prices.length ? Math.ceil(Math.max(...prices) * 1.03) : 100;
 
     // Volume max for secondary axis
     const maxVol = data.length ? Math.max(...data.map((d) => d.volume || 0)) : 1;
 
     return (
-        <div className="bg-[#0c0f19] rounded-xl border border-white/[0.06] overflow-hidden">
-            {/* Period tabs */}
-            <div className="flex items-center justify-between px-4 pt-3 pb-1">
-                <div className="flex items-center gap-4">
+        <div className="card-paper overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                <h3 className="heading-eyebrow">Price chart</h3>
+                <div className="flex items-center gap-1">
                     {PERIODS.map((p) => (
                         <button
                             key={p.value}
                             onClick={() => setPeriod(p.value)}
-                            className={`text-[11px] font-mono pb-1 border-b transition-all cursor-pointer ${period === p.value
-                                ? 'text-[#5b8af0] border-[#5b8af0]'
-                                : 'text-[#343a4f] border-transparent hover:text-[#5a6480]'
+                            className={`text-[11px] font-mono px-2 py-1 rounded transition-all cursor-pointer ${period === p.value
+                                ? 'bg-[#1A1B1E] text-white'
+                                : 'text-[#7A7F88] hover:text-[#1A1B1E] hover:bg-[#F2F1EB]'
                                 }`}
                         >
                             {p.label}
                         </button>
                     ))}
                 </div>
-                {/* Legend */}
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1">
-                        <div className="w-4 h-px" style={{ background: COLORS.sma20, borderTop: '1px dashed rgba(91,138,240,0.5)' }} />
-                        <span className="text-[9px] font-mono text-[#5a6480]">SMA20</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <div className="w-4 h-px" style={{ background: COLORS.sma50, borderTop: '1px dashed rgba(180,140,80,0.5)' }} />
-                        <span className="text-[9px] font-mono text-[#5a6480]">SMA50</span>
-                    </div>
-                </div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-4 px-4 pb-2">
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#7A7F88]">
+                    <span className="w-4 h-[2px]" style={{ background: COLORS.sma20 }} /> SMA20
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#7A7F88]">
+                    <span className="w-4 h-[2px]" style={{ background: COLORS.sma50 }} /> SMA50
+                </span>
+                {targetPrice && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#15803D]">
+                        <span className="w-4 h-[1px] border-t border-dashed" style={{ borderColor: COLORS.target }} /> Target {inr(targetPrice)}
+                    </span>
+                )}
+                {stopLoss && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#B91C1C]">
+                        <span className="w-4 h-[1px] border-t border-dashed" style={{ borderColor: COLORS.stop }} /> Stop {inr(stopLoss)}
+                    </span>
+                )}
             </div>
 
             {/* Chart */}
-            <div className="h-[40vh] min-h-[280px] px-2">
+            <div className="h-[42vh] min-h-[300px] px-2 pb-2">
                 {loading ? (
                     <div className="w-full h-full flex items-center justify-center">
                         <div className="flex gap-1">
-                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#5b8af0]" />
-                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#5b8af0]" />
-                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#5b8af0]" />
+                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#1E40AF]" />
+                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#1E40AF]" />
+                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#1E40AF]" />
                         </div>
+                    </div>
+                ) : (error || data.length === 0) ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-center px-6">
+                        <p className="text-small text-[#7A7F88] mb-1">Price chart unavailable</p>
+                        <p className="text-micro text-[#B6B8B8] max-w-sm">
+                            {error ?? 'No data returned for the selected period.'}
+                        </p>
                     </div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                            {/* Grid — horizontal only */}
                             <XAxis
                                 dataKey="date"
                                 tickFormatter={formatDate}
@@ -156,37 +199,23 @@ export function PriceChart({ ticker }: PriceChartProps) {
                                 tickFormatter={(v: number) => `₹${v}`}
                                 width={55}
                             />
-                            {/* Volume bars — bottom 15% overlaid */}
                             <Bar dataKey="volume" yAxisId="vol" barSize={4} isAnimationActive={false}>
                                 {data.map((d, i) => (
-                                    <Cell
-                                        key={i}
-                                        fill={d.close >= d.open ? COLORS.volUp : COLORS.volDown}
-                                    />
+                                    <Cell key={i} fill={d.close >= d.open ? COLORS.volUp : COLORS.volDown} />
                                 ))}
                             </Bar>
-                            <YAxis
-                                yAxisId="vol"
-                                domain={[0, maxVol * 6]}
-                                hide
-                            />
+                            <YAxis yAxisId="vol" domain={[0, maxVol * 6]} hide />
 
-                            {/* Price bars (candlestick-style) */}
                             <Bar dataKey="close" barSize={6} isAnimationActive={false}>
                                 {data.map((d, i) => (
-                                    <Cell
-                                        key={i}
-                                        fill={d.close >= d.open ? COLORS.up : COLORS.down}
-                                    />
+                                    <Cell key={i} fill={d.close >= d.open ? COLORS.up : COLORS.down} />
                                 ))}
                             </Bar>
 
-                            {/* SMA lines */}
                             <Line
                                 dataKey="sma20"
                                 stroke={COLORS.sma20}
-                                strokeWidth={1}
-                                strokeDasharray="4 4"
+                                strokeWidth={1.25}
                                 dot={false}
                                 isAnimationActive={false}
                                 connectNulls
@@ -194,12 +223,41 @@ export function PriceChart({ ticker }: PriceChartProps) {
                             <Line
                                 dataKey="sma50"
                                 stroke={COLORS.sma50}
-                                strokeWidth={1}
-                                strokeDasharray="4 4"
+                                strokeWidth={1.25}
                                 dot={false}
                                 isAnimationActive={false}
                                 connectNulls
                             />
+
+                            {/* Target & stop overlays */}
+                            {targetPrice != null && (
+                                <ReferenceLine
+                                    y={targetPrice}
+                                    stroke={COLORS.target}
+                                    strokeDasharray="4 3"
+                                    strokeWidth={1}
+                                    label={{
+                                        value: `Target ${inr(targetPrice)}`,
+                                        position: 'right',
+                                        fill: COLORS.target,
+                                        fontSize: 10,
+                                    }}
+                                />
+                            )}
+                            {stopLoss != null && (
+                                <ReferenceLine
+                                    y={stopLoss}
+                                    stroke={COLORS.stop}
+                                    strokeDasharray="4 3"
+                                    strokeWidth={1}
+                                    label={{
+                                        value: `Stop ${inr(stopLoss)}`,
+                                        position: 'right',
+                                        fill: COLORS.stop,
+                                        fontSize: 10,
+                                    }}
+                                />
+                            )}
 
                             <Tooltip
                                 content={<CustomTooltip />}

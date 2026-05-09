@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, DM_Mono } from "next/font/google";
+import { Inter, DM_Mono } from "next/font/google";
 import "./globals.css";
 
-const dmSans = DM_Sans({
+const inter = Inter({
   variable: "--font-dm-sans",
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
@@ -17,12 +17,12 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: "StockSage AI | Multi-Agent Indian Equity Research",
   description:
-    "6 AI analysts decode Indian equities in 30 seconds. Institution-grade fundamental, technical, sentiment, risk, and macro analysis for NSE/BSE stocks.",
+    "Six AI analysts, one verdict. Institution-grade fundamental, technical, sentiment, risk, and macro analysis for NSE/BSE stocks.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#07090f",
-  colorScheme: "dark",
+  themeColor: "#FAFAF7",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -31,15 +31,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <head>
-        <meta name="theme-color" content="#07090f" />
-        <meta name="color-scheme" content="dark" />
+        <meta name="theme-color" content="#FAFAF7" />
+        <meta name="color-scheme" content="light" />
       </head>
       <body
-        className={`${dmSans.variable} ${dmMono.variable} font-sans antialiased min-h-screen bg-background text-foreground selection:bg-accent/20`}
+        className={`${inter.variable} ${dmMono.variable} font-sans antialiased min-h-screen`}
       >
-        <main className="flex min-h-screen flex-col items-center relative overflow-hidden">
+        <main className="flex min-h-screen flex-col items-center relative">
           {children}
         </main>
       </body>
