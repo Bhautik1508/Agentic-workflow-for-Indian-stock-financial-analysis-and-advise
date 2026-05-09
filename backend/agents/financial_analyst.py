@@ -332,7 +332,8 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         messages=[
             {"role": "system", "content": FINANCIAL_SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        agent="Financial Analyst",
     )
     
     data = parse_llm_json(text)

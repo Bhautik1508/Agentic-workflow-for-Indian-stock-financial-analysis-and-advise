@@ -244,7 +244,8 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
         messages=[
             {"role": "system", "content": MACRO_GOV_SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        agent="Macro & Governance Analyst",
     )
     
     data = parse_llm_json(text)

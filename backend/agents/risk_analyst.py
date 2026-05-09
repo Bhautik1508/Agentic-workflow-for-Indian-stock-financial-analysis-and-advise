@@ -239,7 +239,8 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         messages=[
             {"role": "system", "content": RISK_SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        agent="Risk Analyst",
     )
     
     data = parse_llm_json(text)

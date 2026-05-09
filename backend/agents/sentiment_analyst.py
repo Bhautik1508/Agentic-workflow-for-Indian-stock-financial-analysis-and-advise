@@ -319,7 +319,8 @@ async def run_sentiment_analysis(state: StockAnalysisState) -> AgentReport:
     # Use the robust LLM caller with fallback
     text = await call_llm_with_retry(
         client=client,
-        messages=messages
+        messages=messages,
+        agent="Sentiment Analyst",
     )
 
     data = parse_llm_json(text)
