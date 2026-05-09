@@ -62,5 +62,8 @@ e2e_live_out.txt
 
 # Temp & Caching
 backend/.cache/
+backend/.runlog/
+
+# Stale ad-hoc test scripts (deleted; kept here so they can't reappear)
 backend/test_phase12.py
 backend/test_stream.py
