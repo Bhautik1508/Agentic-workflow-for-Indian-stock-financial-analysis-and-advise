@@ -54,6 +54,7 @@ class LLMProvider(Protocol):
         temperature: float = 0.1,
         json_mode: bool = True,
         max_output_tokens: Optional[int] = None,
+        response_schema: Optional[Any] = None,
     ) -> CompletionResult:
         ...
 
@@ -111,6 +112,7 @@ class GeminiProvider:
         temperature: float = 0.1,
         json_mode: bool = True,
         max_output_tokens: Optional[int] = None,
+        response_schema: Optional[Any] = None,
     ) -> CompletionResult:
         from google.genai import types
 
@@ -131,6 +133,10 @@ class GeminiProvider:
             config_kwargs["system_instruction"] = system_instruction
         if json_mode:
             config_kwargs["response_mime_type"] = "application/json"
+        if response_schema is not None and json_mode:
+            # Constrains the model to the shape instead of merely asking for it.
+            # Sanitised first — Gemini accepts only a subset of JSON Schema.
+            config_kwargs["response_schema"] = to_gemini_schema(response_schema)
         if max_output_tokens:
             config_kwargs["max_output_tokens"] = max_output_tokens
 
@@ -153,6 +159,82 @@ class GeminiProvider:
         text = _gemini_text(response)
         prompt_tokens, completion_tokens = _gemini_usage(response)
         return CompletionResult(text=text, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+
+
+# Gemini's structured-output dialect is a strict subset of JSON Schema. These
+# keys are either rejected outright or silently ignored, so they are stripped.
+# `additionalProperties` is the one that actually bites: Pydantic emits it for
+# any model with extra="allow", and Gemini answers
+# "additionalProperties is not supported in the Gemini API".
+_GEMINI_SCHEMA_DROP_KEYS = frozenset({
+    "additionalProperties", "title", "default", "$schema", "examples",
+    "exclusiveMinimum", "exclusiveMaximum", "minimum", "maximum",
+    "const", "discriminator", "patternProperties", "definitions",
+})
+
+
+def to_gemini_schema(model: Any) -> Dict[str, Any]:
+    """Convert a Pydantic model into a schema Gemini will accept.
+
+    Kept here rather than in models/reports.py on purpose: this is a vendor
+    quirk, not a property of our contracts. Agents pass the Pydantic model and
+    never learn that Gemini has opinions about JSON Schema.
+
+    Does three things: inlines `$ref`/`$defs` (unsupported), drops the keys
+    above, and rewrites Optional[X] — which Pydantic emits as
+    `anyOf: [X, null]` — into `X` plus `nullable: true`.
+    """
+    schema = model.model_json_schema() if hasattr(model, "model_json_schema") else dict(model)
+    defs = schema.pop("$defs", {}) or {}
+    return _clean_schema_node(schema, defs)
+
+
+def _clean_schema_node(node: Any, defs: Dict[str, Any], depth: int = 0) -> Any:
+    if depth > 12:            # guard against a pathological recursive model
+        return {"type": "string"}
+    if isinstance(node, list):
+        return [_clean_schema_node(n, defs, depth + 1) for n in node]
+    if not isinstance(node, dict):
+        return node
+
+    # Resolve in a loop: a $ref can point at a def that is itself a $ref.
+    seen_refs = set()
+    while isinstance(node, dict) and "$ref" in node:
+        ref_name = str(node["$ref"]).rsplit("/", 1)[-1]
+        if ref_name in seen_refs:       # cyclic model — stop rather than hang
+            return {"type": "string"}
+        seen_refs.add(ref_name)
+        merged = dict(defs.get(ref_name, {}))
+        merged.update({k: v for k, v in node.items() if k != "$ref"})
+        node = merged
+
+    # Optional[X] -> nullable X. The variant is often a bare $ref
+    # (Optional[NestedModel]), so recurse rather than inlining by hand —
+    # leaving a dangling $ref here made Gemini fail with a bare KeyError.
+    if "anyOf" in node:
+        variants = [v for v in node["anyOf"] if v.get("type") != "null"]
+        nullable = len(variants) != len(node["anyOf"])
+        rest = {k: v for k, v in node.items() if k != "anyOf"}
+        if len(variants) == 1:
+            resolved = _clean_schema_node(variants[0], defs, depth + 1)
+            if not isinstance(resolved, dict):
+                resolved = {"type": "string"}
+            resolved.update(_clean_schema_node(rest, defs, depth + 1))
+            if nullable:
+                resolved["nullable"] = True
+            return resolved
+        node = {**rest, "type": "string"}   # un-representable union -> text
+
+    cleaned: Dict[str, Any] = {}
+    for key, value in node.items():
+        if key in _GEMINI_SCHEMA_DROP_KEYS or key == "$ref":
+            continue
+        cleaned[key] = _clean_schema_node(value, defs, depth + 1)
+
+    # A property-less object is meaningless to Gemini; make it a plain string.
+    if cleaned.get("type") == "object" and not cleaned.get("properties"):
+        return {"type": "string"} if depth else cleaned
+    return cleaned
 
 
 def _gemini_text(response) -> str:
@@ -220,7 +302,10 @@ class OpenAICompatProvider:
         temperature: float = 0.1,
         json_mode: bool = True,
         max_output_tokens: Optional[int] = None,
+        response_schema: Optional[Any] = None,
     ) -> CompletionResult:
+        # `response_schema` is accepted and ignored: this tier guarantees valid
+        # JSON, not the right shape. Callers validate the result regardless.
         kwargs: Dict[str, Any] = {
             "model": model,
             "messages": messages,

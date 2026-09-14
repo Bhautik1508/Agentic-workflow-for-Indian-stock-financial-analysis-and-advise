@@ -1,5 +1,6 @@
 import re
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
+from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate
+from models.reports import SentimentReport
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 def compute_news_stats(news_items: list, fii_dii: dict) -> dict:
@@ -321,9 +322,10 @@ async def run_sentiment_analysis(state: StockAnalysisState) -> AgentReport:
         client=client,
         messages=messages,
         agent="Sentiment Analyst",
+        response_schema=SentimentReport,
     )
 
-    data = parse_llm_json(text)
+    data = parse_and_validate(text, SentimentReport, "Sentiment Analyst")
 
     return AgentReport(
         agent_name   = "Sentiment Analyst",

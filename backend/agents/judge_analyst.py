@@ -1,4 +1,5 @@
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
+from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate
+from models.reports import JudgeVerdict
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 from scoring import (
     profile_weights, band_for_score, get_profile,
@@ -286,9 +287,10 @@ async def run_judge_analyst(state: StockAnalysisState) -> AgentReport:
             {"role": "user", "content": prompt}
         ],
         agent="Judge Analyst",
+        response_schema=JudgeVerdict,
     )
 
-    result = parse_llm_json(text)
+    result = parse_and_validate(text, JudgeVerdict, "Judge Analyst")
 
     # If all five pillars are degraded, the verdict is structurally meaningless.
     # Force a HOLD with floor confidence so we don't surface a false-confident BUY/SELL.

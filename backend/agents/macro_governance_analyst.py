@@ -1,5 +1,22 @@
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
+from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate, str_field
+from models.reports import MacroGovernanceReport
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
+
+# Prompt-size caps. Every one of these fed an uncapped list straight into the
+# prompt; the point is a bounded worst case, not the typical case.
+MAX_INSIDER_RECORDS = 8
+MAX_ANNOUNCEMENTS = 6
+MAX_MACRO_YEARS = 8
+
+
+def _format_record(record) -> str:
+    """Compact one scraped record. `str(dict)` spends tokens on braces, quotes
+    and None values that carry no signal."""
+    if not isinstance(record, dict):
+        return str(record)
+    parts = [f"{k}={v}" for k, v in record.items() if v not in (None, "", "-")]
+    return " | ".join(parts) if parts else "(empty record)"
+
 
 MACRO_GOV_SYSTEM_PROMPT = """You are a dual-specialist analyst combining:
 
@@ -161,8 +178,12 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
     sector = str_field(fundamental, "sector", "Unknown").lower()
     
     # Format lists to text
-    gdp_hist = "\n".join([f"{y}: {v}%" for y, v in macro.get("gdp_growth_pct", [])]) or "Unavailable"
-    cpi_hist = "\n".join([f"{y}: {v}%" for y, v in macro.get("cpi_inflation_pct", [])]) or "Unavailable"
+    gdp_hist = "  ".join(
+        [f"{y}:{v}%" for y, v in (macro.get("gdp_growth_pct") or [])[-MAX_MACRO_YEARS:]]
+    ) or "Unavailable"
+    cpi_hist = "  ".join(
+        [f"{y}:{v}%" for y, v in (macro.get("cpi_inflation_pct") or [])[-MAX_MACRO_YEARS:]]
+    ) or "Unavailable"
     
     usdinr = market_breadth.get("usdinr", {})
     crude = market_breadth.get("crude", {})
@@ -198,10 +219,20 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
         else: p_interp = "very_low"
     
     insiders = gov.get("insider_transactions", [])
-    insider_txt = "\n".join([str(i) for i in insiders]) if insiders else "No recent notable insider records found."
+    # Bounded: this was an uncapped str(dict) dump. A company with a busy
+    # insider register could quietly add thousands of tokens to the prompt.
+    insider_txt = "\n".join(
+        [_format_record(i) for i in insiders[:MAX_INSIDER_RECORDS]]
+    ) if insiders else "No recent notable insider records found."
+    if insiders and len(insiders) > MAX_INSIDER_RECORDS:
+        insider_txt += f"\n(+{len(insiders) - MAX_INSIDER_RECORDS} older records omitted)"
     
     announcements = gov.get("announcements", [])
-    ann_txt = "\n".join([str(a) for a in announcements]) if announcements else "No major recent announcements."
+    ann_txt = "\n".join(
+        [_format_record(a) for a in announcements[:MAX_ANNOUNCEMENTS]]
+    ) if announcements else "No major recent announcements."
+    if announcements and len(announcements) > MAX_ANNOUNCEMENTS:
+        ann_txt += f"\n(+{len(announcements) - MAX_ANNOUNCEMENTS} older announcements omitted)"
 
     prompt = MACRO_GOV_USER_PROMPT.format(
         company_name=state["company_name"],
@@ -246,9 +277,10 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
             {"role": "user", "content": prompt}
         ],
         agent="Macro & Governance Analyst",
+        response_schema=MacroGovernanceReport,
     )
     
-    data = parse_llm_json(text)
+    data = parse_and_validate(text, MacroGovernanceReport, "Macro & Governance Analyst")
     
     return AgentReport(
         agent_name="Macro & Governance Analyst",

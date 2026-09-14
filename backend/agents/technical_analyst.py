@@ -1,4 +1,5 @@
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
+from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate, str_field
+from models.reports import TechnicalReport
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 TECHNICAL_SYSTEM_PROMPT = """You are a Chartered Market Technician (CMT) and head of technical research at a leading
@@ -267,9 +268,10 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
             {"role": "user", "content": prompt}
         ],
         agent="Technical Analyst",
+        response_schema=TechnicalReport,
     )
     
-    data = parse_llm_json(text)
+    data = parse_and_validate(text, TechnicalReport, "Technical Analyst")
     
     return AgentReport(
         agent_name="Technical Analyst",

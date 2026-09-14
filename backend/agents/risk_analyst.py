@@ -1,5 +1,6 @@
 import numpy as np
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
+from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate, str_field
+from models.reports import RiskReport
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 RISK_SYSTEM_PROMPT = """You are a Senior Risk Manager at a SEBI-registered Portfolio Management Service (PMS) firm
@@ -241,9 +242,10 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
             {"role": "user", "content": prompt}
         ],
         agent="Risk Analyst",
+        response_schema=RiskReport,
     )
     
-    data = parse_llm_json(text)
+    data = parse_and_validate(text, RiskReport, "Risk Analyst")
     
     return AgentReport(
         agent_name="Risk Analyst",

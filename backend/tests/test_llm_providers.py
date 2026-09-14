@@ -257,12 +257,15 @@ class _StubProvider:
         self.fail_times = fail_times
         self.error = error or RuntimeError("boom")
         self.calls: List[str] = []
+        self.schemas: List[Any] = []
 
     def is_configured(self):
         return True
 
-    async def complete(self, messages, *, model, temperature=0.1, json_mode=True, max_output_tokens=None):
+    async def complete(self, messages, *, model, temperature=0.1, json_mode=True,
+                       max_output_tokens=None, response_schema=None):
         self.calls.append(model)
+        self.schemas.append(response_schema)
         if self.fail_times > 0:
             self.fail_times -= 1
             raise self.error

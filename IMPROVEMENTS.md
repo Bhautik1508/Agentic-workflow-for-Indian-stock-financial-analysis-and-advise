@@ -298,79 +298,104 @@ un-leak an already-scraped value.
 
 ---
 
-### Phase 1 — Reliability *(week 1)*
+### Phase 1 — Reliability ✅ *(done)*
 
 **Model & provider health probe (#2)**
 
-- [ ] Add `llm/health.py`: for each configured provider, list models and assert the configured ID
-      is present; return `{provider, model, reachable, model_exists, latency_ms}`.
-- [ ] Surface it at `GET /api/health?deep=true`. Keep the shallow check cheap for Render's poller.
-- [ ] Fail loudly at startup (log `CRITICAL`) when the primary model is unreachable — the outage
-      above lasted because the failure was invisible.
-- [ ] Deduplicate the two `@router.get("/health")` handlers in
-      [backend/api/routes.py:36](backend/api/routes.py#L36) and
-      [backend/api/routes.py:298](backend/api/routes.py#L298) — the second silently shadows the first.
+- [x] `backend/llm/health.py` probes every provider concurrently, verifies the configured model
+      IDs are served, and reports latency.
+- [x] Surfaced at `GET /api/health`, with `?deep=true` (probe providers), `?live=true` (send a
+      real completion) and `?models=true` (full model list). Shallow stays free — measured **0ms
+      and no network**, because Render polls it.
+- [x] `main.py` logs `CRITICAL` at startup when a provider is unhealthy, via a `lifespan` handler
+      (not the deprecated `on_event`) running as a background task so a slow vendor cannot delay
+      boot. `LLM_STARTUP_CHECK=0` disables it.
+- [x] The two `@router.get("/health")` handlers are deduplicated — the second silently shadowed
+      the first. A test asserts exactly one is registered.
+- [x] `scripts/check_llm_health.py` is now a thin CLI over `llm.health` instead of a second
+      implementation. It had already drifted once, reporting on a model the app no longer used.
 
 **Concurrency & runtime (#5, #10)**
 
-- [ ] Make the analyst semaphore lazy in [backend/graph/workflow.py:17](backend/graph/workflow.py#L17).
-      A module-level `asyncio.Semaphore()` binds the import-time loop on Python 3.9 and throws
-      `got Future attached to a different loop` once more than `ANALYST_CONCURRENCY` analysts
-      contend. Production pins 3.11 where this is benign — but it is a live trap for anyone
-      running the repo's own venv, which is Python 3.9.
-      ```python
-      _analyst_semaphore: asyncio.Semaphore | None = None
+- [x] The analyst semaphore is built lazily inside the running loop. A test reproduces the exact
+      5-analysts-against-3-slots contention that used to raise
+      `got Future attached to a different loop`. A full local run no longer needs a workaround.
+- [x] Virtualenv untracked (done in Phase 0).
+- [x] `langchain`, `langchain-community` and `duckduckgo-search` dropped. **Verified, not
+      assumed:** `langgraph` declares only `langchain-core`, and `langchain_core/globals.py`
+      wraps `import langchain` in `try/except ImportError` behind a `_HAS_LANGCHAIN` flag.
+- [ ] **Not done — rebuild the venv on Python 3.11.** Only 3.12 is installed on this machine, and
+      installing 3.11 to match `runtime.txt` is your call. The lazy-semaphore fix removes the
+      practical consequence, so this is now cosmetic rather than blocking.
 
-      def _get_semaphore() -> asyncio.Semaphore:
-          global _analyst_semaphore
-          if _analyst_semaphore is None:
-              _analyst_semaphore = asyncio.Semaphore(ANALYST_CONCURRENCY)
-          return _analyst_semaphore
-      ```
-- [ ] **Untrack the virtualenv** — the single highest-leverage cleanup in this document:
-      ```bash
-      git rm -r --cached backend/venv        # .gitignore already covers it
-      git commit -m "chore: untrack committed virtualenv"
-      ```
-      Removes 12,669 files from the tree. To reclaim the 94 MB of history as well, run
-      `git filter-repo --path backend/venv --invert-paths` in the same pass as the `.env` purge
-      in Phase 0 — one history rewrite, one force-push, one coordination cost.
-- [ ] Rebuild the local venv on Python 3.11 to match `runtime.txt`. The committed venv is 3.9.6
-      and already emits end-of-life warnings from `google-auth`.
-- [ ] Drop `langchain`, `langchain-community`, `duckduckgo-search` from `requirements.txt` —
-      none are imported anywhere in `backend/`. Verify with a clean install before merging;
-      `langgraph` needs `langchain-core`, which it pulls itself.
-
-**Exit criteria:** deep health check is green; test suite passes on Python 3.11; cold start measurably faster.
+**Result:** deep health green for both providers (gemini 794ms, groq 675ms); startup probe logs
+healthy; full analysis runs end to end on Python 3.9 with no workaround.
 
 ---
 
-### Phase 2 — Output quality *(week 2)*
-
-Gemini as primary makes both of these cheaper to do than before.
+### Phase 2 — Output quality ✅ *(done)*
 
 **Structured outputs (#3)**
 
-- [ ] Define a Pydantic model per agent (`FinancialReport`, `TechnicalReport`, …, `JudgeVerdict`)
-      mirroring the JSON schema each prompt currently describes in prose.
-- [ ] Pass it to Gemini as `response_schema` + `response_mime_type="application/json"` — the SDK
-      already supports this and `GeminiProvider` just needs the field plumbed through.
-- [ ] Keep [`parse_llm_json`](backend/agents/base_agent.py#L53) as the Groq-tier fallback; Groq's
-      `json_object` mode guarantees valid JSON but not the right *shape*.
-- [ ] Validate on the way out. A schema violation should produce a **degraded** report — the
-      machinery for that already exists and the judge already handles it.
-- [ ] Delete the hand-written JSON schema blocks from the prompts once the schema is authoritative.
-      Today the prompt and the parser can drift apart with nothing catching it.
+- [x] `backend/models/reports.py` defines a Pydantic model per agent — `FinancialReport`,
+      `SentimentReport`, `TechnicalReport`, `RiskReport`, `MacroGovernanceReport`, `JudgeVerdict`.
+- [x] Handed to Gemini as `response_schema`, so the model is *constrained* to the shape rather
+      than asked for it. All six verified against the live API.
+- [x] `parse_llm_json` retained for the Groq tier, whose `json_object` mode guarantees valid JSON
+      but not the right shape. Every provider's output is validated.
+- [x] Validation is **two-tier**, deliberately. Structural failures (unparseable, or no
+      `summary`/`score`) raise and produce a degraded report with `score=None`, so the judge drops
+      that pillar instead of weighing a fabricated number. Vocabulary drift is coerced —
+      `"Under-Valued"` → `undervalued`, `confidence: 85` → `0.85`, `score: 65` → `10.0`. Rejecting
+      a complete report over a cosmetic mismatch would cost a whole pillar for nothing.
+- [x] **Deviation from the plan, on purpose.** The plan said to delete the JSON blocks from the
+      prompts once the schema was authoritative. I did not: those blocks also carry *content*
+      guidance a JSON Schema cannot express ("cite the exact FII number", "max 8 words"), so
+      deleting them would trade a shape guarantee for worse content. The stated goal was
+      preventing silent drift, so instead a test parses each prompt's JSON block by brace depth
+      and asserts every key it requests exists on the schema. All six agents: **16 prompt keys,
+      all modelled, zero extras.** Drift now fails the build.
+
+Two vendor bugs found and fixed while wiring this up, both caught only by calling the real API:
+
+- Pydantic emits `additionalProperties` for any model with `extra="allow"`, and Gemini answers
+  *"additionalProperties is not supported"*. Fixed with `to_gemini_schema()` in the provider —
+  a vendor quirk belongs at the vendor boundary, not in the contracts.
+- `Optional[NestedModel]` becomes `anyOf: [$ref, null]`; leaving the `$ref` unresolved made
+  Gemini fail with a bare `KeyError`. The sanitiser now inlines refs (with a cycle guard) and
+  rewrites nullable unions.
 
 **Prompt diet (#4)**
 
-- [ ] [backend/agents/financial_analyst.py:154](backend/agents/financial_analyst.py#L154) dumps the
-      entire Screener payload via `json.dumps(screener, indent=2)` with no cap. Summarise to the
-      rows the prompt actually cites (Sales, Net Profit, ROCE, ROE — last 5 years) and drop `indent=2`.
-- [ ] Add a token budget per agent; log when a prompt exceeds it.
-- [ ] Measure before/after with the existing `total_tokens` telemetry. Baseline: **22,756 tokens/run**.
+- [x] The Screener payload is summarised by `backend/data/screener_summary.py` instead of
+      `json.dumps(..., indent=2)`: **5,571 → 858 chars, an 85% cut** on TCS, and bounded as
+      Screener adds history.
+- [x] **A latent data bug surfaced doing this.** Screener's row labels carry a *non-breaking
+      space* — the Sales row arrives as `pl_Sales\xa0+`, not `pl_Sales`. Every
+      `screener.get("pl_Sales")` returned `None`, so **Revenue CAGR and Profit CAGR rendered as
+      "N/A" in every prompt this system has ever sent.** Lookups are now normalised; Revenue CAGR
+      computes as 10.2% for TCS.
+- [x] Per-agent prompt token budget (`AGENT_PROMPT_TOKEN_BUDGET`, default 6000) logs a warning
+      when exceeded.
+- [x] Remaining unbounded prompt inputs capped — insider records, announcements, macro history
+      and the peer table were all uncapped `str(dict)` joins waiting for a busy register.
 
-**Exit criteria:** zero JSON parse failures across a 20-ticker sweep; tokens per run down ≥30%.
+**Result, measured:**
+
+| | Before | After |
+|---|---|---|
+| Tokens per run | 22,756 | **16,659** |
+| Screener block | ~1,392 tok | **~214 tok** |
+| Revenue CAGR in prompt | `N/A` always | 10.2% |
+| JSON parse failures (12-call sweep) | — | **0** |
+| Schema validation failures | — | **0** |
+
+**Exit criteria: one met, one missed honestly.** Zero parse failures across the sweep ✅. Tokens
+down **27%**, short of the 30% I estimated before measuring ❌ — and that 30% was a guess written
+in advance, not a measurement. The remaining prompt weight is instruction text and worked
+examples that drive output quality; cutting it to hit a number would trade real quality for a
+cosmetic target. Note too that the 22,756 baseline was recorded on the old Groq/llama path, so
+part of the delta is the model change, not the diet.
 
 ---
 

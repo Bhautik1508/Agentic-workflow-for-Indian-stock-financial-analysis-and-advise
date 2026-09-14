@@ -79,6 +79,16 @@ def _extract_token_counts(response) -> tuple[int, int]:
         return 0, 0
 
 
+def _is_schema_rejection(exc: Exception) -> bool:
+    """True when a vendor refused the structured-output schema itself."""
+    msg = str(exc).lower()
+    return (
+        "response_schema" in msg
+        or "responseschema" in msg
+        or ("schema" in msg and ("invalid" in msg or "unsupported" in msg or "400" in msg))
+    )
+
+
 def _looks_like_openai_client(obj) -> bool:
     """True for AsyncGroq / OpenAI / any test double exposing chat.completions.create."""
     return hasattr(getattr(getattr(obj, "chat", None), "completions", None), "create")
@@ -128,6 +138,7 @@ async def call_llm(
     fallback_model: Optional[str] = None,
     temperature: float = 0.1,
     max_output_tokens: Optional[int] = None,
+    response_schema: Optional[Any] = None,
 ) -> str:
     """Single entry point for LLM calls.
 
@@ -161,6 +172,7 @@ async def call_llm(
                 temperature=temperature,
                 json_mode=json_mode,
                 max_output_tokens=max_output_tokens,
+                response_schema=response_schema,
             )
             if telemetry is not None:
                 telemetry.record(LLMCallRecord(
@@ -183,6 +195,40 @@ async def call_llm(
                 )
             return result.text
         except Exception as exc:
+            if response_schema is not None and _is_schema_rejection(exc):
+                # The vendor dislikes this schema. Plain JSON mode still gets a
+                # usable answer, and the caller validates either way — better
+                # than burning the attempt.
+                logger.warning(
+                    f"[llm.router] {agent}: {attempt} rejected the response schema "
+                    f"({str(exc)[:100]}); retrying this attempt without it"
+                )
+                try:
+                    result = await attempt.provider.complete(
+                        messages,
+                        model=attempt.model,
+                        temperature=temperature,
+                        json_mode=json_mode,
+                        max_output_tokens=max_output_tokens,
+                    )
+                    if telemetry is not None:
+                        telemetry.record(LLMCallRecord(
+                            agent=agent,
+                            model=attempt.model,
+                            provider=attempt.provider.name,
+                            started_at=started_at_ist,
+                            duration_ms=int((time.monotonic() - started) * 1000),
+                            prompt_tokens=result.prompt_tokens,
+                            completion_tokens=result.completion_tokens,
+                            total_tokens=result.total_tokens,
+                            success=True,
+                            fallback_used=index > 0,
+                            attempt=index + 1,
+                        ))
+                    return result.text
+                except Exception as retry_exc:
+                    exc = retry_exc
+
             last_error = exc
             if telemetry is not None:
                 telemetry.record(LLMCallRecord(

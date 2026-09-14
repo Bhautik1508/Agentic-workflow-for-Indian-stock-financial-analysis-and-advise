@@ -1,5 +1,6 @@
-import json
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
+from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate, str_field
+from models.reports import FinancialReport
+from data.screener_summary import compute_cagr, find_row, latest_value, summarize_screener
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 FINANCIAL_SYSTEM_PROMPT = """You are a Senior Equity Research Analyst at a top-tier Indian brokerage with 15+ years
@@ -130,6 +131,10 @@ Provide your analysis as JSON with this exact schema:
 }}
 """
 
+# Peer lists come from a sector scan and are not inherently bounded.
+MAX_PEERS = 8
+
+
 def format_metric(val, is_pct=False):
     if val is None or val == "N/A":
         return "N/A"
@@ -150,50 +155,18 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     screener = state.get("screener_data", {})
     earnings = state.get("earnings_data", {})
     
-    # Helper string formats
-    screener_text = json.dumps(screener, indent=2) if screener else "No Screener data."
+    # Compact, decision-relevant view instead of the whole payload. The raw
+    # dump was ~1,400 tokens and grew with Screener's history.
+    screener_text = summarize_screener(screener)
     
-    # Compute CAGR from Screener year-keyed data
-    def compute_cagr(data_row: dict, n_years: int = 5) -> str:
-        """Compute CAGR from a year-keyed dict like {'Mar 2020': '100', 'Mar 2025': '200'}"""
-        if not data_row or not isinstance(data_row, dict):
-            return "N/A"
-        try:
-            keys = sorted(data_row.keys())
-            if len(keys) < 2:
-                return "N/A"
-            # Get the latest and the one n_years ago
-            latest_key = keys[-1]
-            start_idx = max(0, len(keys) - n_years - 1)
-            start_key = keys[start_idx]
-            latest_val = float(str(data_row[latest_key]).replace(',', ''))
-            start_val = float(str(data_row[start_key]).replace(',', ''))
-            if start_val <= 0 or latest_val <= 0:
-                return "N/A"
-            actual_years = len(keys) - 1 - start_idx
-            if actual_years <= 0:
-                return "N/A"
-            cagr = ((latest_val / start_val) ** (1 / actual_years) - 1) * 100
-            return f"{cagr:.1f}%"
-        except:
-            return "N/A"
-    
-    def get_latest_ratio(screener_data: dict, key_prefix: str) -> str:
-        """Get the latest value from a year-keyed screener ratio dict."""
-        for k, v in screener_data.items():
-            if k.startswith(key_prefix) and isinstance(v, dict):
-                keys = sorted(v.keys())
-                if keys:
-                    return v[keys[-1]]
-        return "N/A"
-    
-    # Find Sales/Revenue row and Net Profit row
-    revenue_row = screener.get("pl_Sales", screener.get("pl_Revenue", {}))
-    profit_row = screener.get("pl_Net Profit", screener.get("pl_Profit after tax", {}))
-    revenue_cagr_5y = compute_cagr(revenue_row, 5)
-    profit_cagr_5y = compute_cagr(profit_row, 5)
-    roce_latest = get_latest_ratio(screener, "ratio_ROCE")
-    roe_latest = get_latest_ratio(screener, "ratio_ROE")
+    # Tolerant lookup: Screener labels carry a non-breaking space and a
+    # trailing '+', so the previous exact-match `.get("pl_Sales")` never hit and
+    # both CAGRs rendered "N/A" in every prompt this system has ever sent.
+    revenue_cagr_5y = compute_cagr(find_row(screener, "pl_Sales", "pl_Revenue"), 5)
+    profit_cagr_5y = compute_cagr(
+        find_row(screener, "pl_Net Profit", "pl_Profit after tax", "pl_Operating Profit"), 5)
+    roce_latest = latest_value(find_row(screener, "ratio_ROCE %", "ratio_ROCE"))
+    roe_latest = latest_value(find_row(screener, "ratio_ROE %", "ratio_ROE"))
     
     # Peer Table & Sector Math (using new peer_data)
     peer_data = state.get("peer_data") or fundamental.get("sector_peers", {}) # Fallback to old for safety
@@ -257,7 +230,7 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
     
     if peers:
         table_rows = []
-        for p in peers:
+        for p in peers[:MAX_PEERS]:
             p_pe = format_metric(p.get('pe'))
             p_pb = format_metric(p.get('pb'))
             p_roe = format_metric(p.get('roe'), True)
@@ -334,9 +307,10 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
             {"role": "user", "content": prompt}
         ],
         agent="Financial Analyst",
+        response_schema=FinancialReport,
     )
     
-    data = parse_llm_json(text)
+    data = parse_and_validate(text, FinancialReport, "Financial Analyst")
     
     return AgentReport(
         agent_name="Financial Analyst",

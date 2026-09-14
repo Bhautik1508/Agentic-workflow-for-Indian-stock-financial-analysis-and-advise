@@ -3,6 +3,8 @@ import functools
 import logging
 import json
 import re
+from pydantic import ValidationError
+
 from graph.state import AgentReport, AgentStatus
 from llm import build_default_chain, call_llm as _routed_call_llm
 
@@ -34,6 +36,7 @@ async def call_llm_with_retry(
     fallback_model=None,
     *,
     agent: str = "unknown",
+    response_schema=None,
 ):
     """Thin wrapper that routes through `llm.router.call_llm` so every call is
     recorded in the per-run telemetry contextvar.
@@ -41,6 +44,7 @@ async def call_llm_with_retry(
     `primary_model`/`fallback_model` default to None so the chain built from env
     wins. Pass them only to pin a specific model for one agent.
     """
+    _log_prompt_size(agent, messages)
     return await _routed_call_llm(
         client,
         messages,
@@ -48,7 +52,58 @@ async def call_llm_with_retry(
         response_format=response_format,
         primary_model=primary_model,
         fallback_model=fallback_model,
+        response_schema=response_schema,
     )
+
+
+# Rough chars-per-token for English prose + numbers. Good enough to catch a
+# prompt that has grown an order of magnitude; not a billing-grade counter.
+_CHARS_PER_TOKEN = 4
+DEFAULT_PROMPT_TOKEN_BUDGET = int(os.environ.get("AGENT_PROMPT_TOKEN_BUDGET", "6000") or 6000)
+
+
+def estimate_tokens(messages) -> int:
+    return sum(len(str(m.get("content", ""))) for m in messages) // _CHARS_PER_TOKEN
+
+
+def _log_prompt_size(agent: str, messages) -> None:
+    """Warn when an agent's prompt outgrows its budget.
+
+    One agent was pasting an entire unbounded Screener payload into its prompt,
+    which is invisible until you read a token bill. A log line is cheap.
+    """
+    estimated = estimate_tokens(messages)
+    if estimated > DEFAULT_PROMPT_TOKEN_BUDGET:
+        logger.warning(
+            f"[prompt-budget] {agent}: ~{estimated} tokens exceeds budget of "
+            f"{DEFAULT_PROMPT_TOKEN_BUDGET}. Trim the context being pasted in."
+        )
+
+
+def validate_report(data: dict, schema, agent_name: str) -> dict:
+    """Validate a parsed LLM response against its schema.
+
+    Two-tier on purpose (see models/reports.py): vocabulary drift is coerced by
+    the model's validators, while a structural failure — no summary, no score,
+    score out of range — raises. The raise is caught by `agent_with_fallback`,
+    which produces a degraded report with score=None, so the judge drops that
+    pillar's weight instead of averaging in a fabricated number.
+    """
+    if schema is None:
+        return data
+    try:
+        return schema.model_validate(data).model_dump()
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+            for err in exc.errors()[:4]
+        )
+        raise ValueError(f"{agent_name} output failed schema validation — {problems}") from exc
+
+
+def parse_and_validate(text: str, schema, agent_name: str) -> dict:
+    """parse_llm_json + schema validation, the path every agent should use."""
+    return validate_report(parse_llm_json(text), schema, agent_name)
 
 def str_field(data, key: str, default: str = "unknown") -> str:
     """Return a string for `key`, substituting `default` for missing OR None.
