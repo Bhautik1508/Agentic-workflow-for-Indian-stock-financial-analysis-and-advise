@@ -3,35 +3,44 @@ import functools
 import logging
 import json
 import re
-from groq import AsyncGroq
 from graph.state import AgentReport, AgentStatus
+from llm import build_default_chain, call_llm as _routed_call_llm
 
 logger = logging.getLogger(__name__)
 
-def get_llm():
-    """Build standardized Groq Client instance using the official SDK."""
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY environment variable is missing.")
-        
-    return AsyncGroq(api_key=api_key)
 
-import asyncio
-import random
-from llm import call_llm as _routed_call_llm
+def get_llm():
+    """Return the configured provider chain: Gemini primary, Groq fallback.
+
+    Named `get_llm` for continuity — every agent already calls it — but it no
+    longer hands back a single vendor client. The router walks the chain and
+    fails over between providers, so an outage or a decommissioned model at one
+    vendor degrades to the other instead of failing the whole analysis.
+    """
+    chain = build_default_chain()
+    if not chain:
+        raise ValueError(
+            "No LLM provider configured. Set GOOGLE_API_KEY (Gemini, primary) "
+            "and/or GROQ_API_KEY (Groq, fallback)."
+        )
+    return chain
 
 
 async def call_llm_with_retry(
     client,
     messages,
     response_format=None,
-    primary_model='llama-3.3-70b-versatile',
-    fallback_model='llama-3.1-8b-instant',
+    primary_model=None,
+    fallback_model=None,
     *,
     agent: str = "unknown",
 ):
-    """Phase 3: thin wrapper that routes through `llm.router.call_llm` so every
-    call is recorded in the per-run telemetry contextvar."""
+    """Thin wrapper that routes through `llm.router.call_llm` so every call is
+    recorded in the per-run telemetry contextvar.
+
+    `primary_model`/`fallback_model` default to None so the chain built from env
+    wins. Pass them only to pin a specific model for one agent.
+    """
     return await _routed_call_llm(
         client,
         messages,

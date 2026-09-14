@@ -398,21 +398,55 @@ async def test_call_llm_records_successful_call():
 
 
 @pytest.mark.asyncio
-async def test_call_llm_records_non_429_error_and_reraises():
+async def test_call_llm_fails_over_on_non_rate_limit_error():
+    """Policy change: the router now fails over on ANY error, not just 429.
+
+    The old behaviour re-raised non-429s immediately. That is what turned Groq
+    retiring `llama-3.3-70b-versatile` into a total outage — every call 404'd
+    with a healthy fallback tier sitting unused one line away."""
     t = LLMTelemetry()
     token = set_current_telemetry(t)
     try:
-        completions = _FakeCompletions(fail_first=1, error=RuntimeError("auth failed"))
+        completions = _FakeCompletions(fail_first=1, error=RuntimeError("404 model not found"))
         client = _FakeClient(completions)
-        with pytest.raises(RuntimeError):
+        text = await call_llm(client, [{"role": "user", "content": "hi"}], agent="Test")
+    finally:
+        reset_current_telemetry(token)
+
+    assert text == '{"action": "BUY"}'
+    # Both attempts are recorded — the failure and the recovery.
+    assert t.total_calls() == 2
+    assert t.records[0].success is False
+    assert "404" in (t.records[0].error or "")
+    assert t.records[1].success is True
+    assert t.records[1].fallback_used is True
+    assert t.records[1].attempt == 2
+
+
+@pytest.mark.asyncio
+async def test_call_llm_raises_when_every_attempt_fails():
+    t = LLMTelemetry()
+    token = set_current_telemetry(t)
+    try:
+        completions = _FakeCompletions(fail_first=99, error=RuntimeError("auth failed"))
+        client = _FakeClient(completions)
+        with pytest.raises(RuntimeError, match="auth failed"):
             await call_llm(client, [{"role": "user", "content": "hi"}], agent="Test")
     finally:
         reset_current_telemetry(token)
 
-    assert t.total_calls() == 1
-    assert t.records[0].success is False
-    assert t.records[0].fallback_used is False
-    assert "auth failed" in (t.records[0].error or "")
+    assert t.total_calls() == 2
+    assert t.failed_calls() == 2
+    assert all(r.success is False for r in t.records)
+
+
+@pytest.mark.asyncio
+async def test_call_llm_without_provider_chain_raises_clearly(monkeypatch):
+    """No keys configured -> an actionable message, not an AttributeError."""
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="No LLM provider configured"):
+        await call_llm(None, [{"role": "user", "content": "hi"}], agent="Test")
 
 
 @pytest.mark.asyncio
@@ -434,9 +468,13 @@ async def test_call_llm_falls_back_on_rate_limit(monkeypatch):
         reset_current_telemetry(token)
 
     assert text == '{"action": "BUY"}'
-    assert t.total_calls() == 1
-    assert t.records[0].fallback_used is True
-    assert t.records[0].success is True
+    # Every attempt is recorded now, so the 429 itself is visible in the run log.
+    assert t.total_calls() == 2
+    assert t.records[0].success is False
+    assert t.records[1].success is True
+    assert t.records[1].fallback_used is True
+    # The fallback attempt used the second model in the chain, not the first.
+    assert completions.calls[0]["model"] != completions.calls[1]["model"]
 
 
 @pytest.mark.asyncio

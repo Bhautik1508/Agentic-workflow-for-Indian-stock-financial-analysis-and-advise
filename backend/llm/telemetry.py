@@ -23,7 +23,9 @@ class LLMCallRecord:
     total_tokens: int
     success: bool
     error: Optional[str] = None
-    fallback_used: bool = False      # True when primary model 429'd and we failed over
+    fallback_used: bool = False      # True for any attempt after the first
+    provider: str = "unknown"        # "gemini" | "groq" | test doubles
+    attempt: int = 1                 # 1-based position in the failover chain
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -51,6 +53,28 @@ class LLMTelemetry:
     def failed_calls(self) -> int:
         return sum(1 for r in self.records if not r.success)
 
+    def by_provider(self) -> Dict[str, Dict[str, Any]]:
+        """Per-provider rollup. Makes "did Gemini actually serve this run, or did
+        everything quietly fall through to Groq?" answerable from the run log."""
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in self.records:
+            bucket = out.setdefault(
+                r.provider,
+                {"calls": 0, "successes": 0, "failures": 0, "tokens": 0, "duration_ms": 0},
+            )
+            bucket["calls"] += 1
+            bucket["successes" if r.success else "failures"] += 1
+            bucket["tokens"] += r.total_tokens
+            bucket["duration_ms"] += r.duration_ms
+        return out
+
+    def primary_provider_success_rate(self) -> Optional[float]:
+        """Share of first-attempt calls that succeeded. None when no calls were made."""
+        first_attempts = [r for r in self.records if r.attempt == 1]
+        if not first_attempts:
+            return None
+        return round(sum(1 for r in first_attempts if r.success) / len(first_attempts), 3)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "total_calls":       self.total_calls(),
@@ -58,6 +82,8 @@ class LLMTelemetry:
             "total_duration_ms": self.total_duration_ms(),
             "fallback_calls":    self.fallback_calls(),
             "failed_calls":      self.failed_calls(),
+            "by_provider":       self.by_provider(),
+            "primary_success_rate": self.primary_provider_success_rate(),
             "records":           [r.to_dict() for r in self.records],
         }
 
