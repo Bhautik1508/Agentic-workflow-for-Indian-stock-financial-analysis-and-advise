@@ -1,6 +1,8 @@
 import requests
+from data.fetch_cache import cached_fetch
 
 
+@cached_fetch("nse.options", ttl_seconds=3600)
 def fetch_options_signals(symbol: str) -> dict:
     """
     Fetches PCR (Put-Call Ratio) and max pain from NSE options chain.

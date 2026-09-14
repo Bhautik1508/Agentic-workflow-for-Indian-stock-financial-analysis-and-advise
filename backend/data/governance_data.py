@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+from data.fetch_cache import cached_fetch
 
 # BSE code map for top 100 NSE stocks
 BSE_CODE_MAP = {
@@ -24,6 +25,7 @@ BSE_CODE_MAP = {
 }
 
 
+@cached_fetch("screener.governance", ttl_seconds=43200)
 def fetch_governance_data(ticker: str) -> dict:
     """
     Fetches promoter shareholding & pledge from Screener.in

@@ -58,10 +58,14 @@ async def health_check(deep: bool = False, live: bool = False, models: bool = Fa
     if not (deep or live):
         return payload
 
+    from data.fetch_cache import stats as cache_stats
     from llm import full_report
 
     report = await full_report(live=live, include_model_list=models)
     payload["llm"] = report
+    # Cheap by default: counting negatives would read every cache file on a
+    # poller that runs every 30s.
+    payload["cache"] = cache_stats(deep=False)
     payload["status"] = "ok" if report.get("healthy") else "degraded"
     return payload
 

@@ -6,9 +6,11 @@ from bs4 import BeautifulSoup
 from yahooquery import Ticker, search
 import yfinance as yf
 import os
+from data.fetch_cache import cached_fetch
 
 NSE_SUFFIX = ".NS"
 
+@cached_fetch("yfinance.earnings", ttl_seconds=21600)
 async def fetch_earnings_data(ticker: str) -> dict:
     """Fetch earnings calendar, EPS surprises, and proximity risk."""
     import asyncio
@@ -90,6 +92,7 @@ async def fetch_earnings_data(ticker: str) -> dict:
     }
 
 
+@cached_fetch("yfinance.institutional", ttl_seconds=21600)
 async def fetch_institutional_data(ticker: str) -> dict:
     """Fetch institutional and insider ownership data from yfinance."""
     try:
@@ -169,6 +172,7 @@ async def fetch_institutional_data(ticker: str) -> dict:
             "insider_ownership_pct": None,
         }
 
+@cached_fetch("marketaux.news", ttl_seconds=1800)
 async def fetch_news(company_name: str, ticker: str = "") -> List[Dict[str, str]]:
     """Fetch valid recent news from Marketaux (Primary), NewsAPI (Secondary), or DuckDuckGo (Fallback)."""
     
@@ -240,6 +244,7 @@ async def fetch_news(company_name: str, ticker: str = "") -> List[Dict[str, str]
         {"title": f"Sector experts predict bullish momentum for {company_name}", "source": "Financial Times"}
     ]
 
+@cached_fetch("moneycontrol.fii_dii", ttl_seconds=3600)
 def fetch_fii_dii_data() -> dict:
     """Fetches last 10 trading days of FII/DII equity net buy/sell from NSE India"""
     try:
@@ -276,6 +281,7 @@ def fetch_fii_dii_data() -> dict:
             "daily_records": []
         }
 
+@cached_fetch("gdelt.sentiment", ttl_seconds=3600)
 def fetch_gdelt_sentiment(company_name: str) -> dict:
     """GDELT 2.0 DOC API — Global news tone searches"""
     try:
@@ -308,6 +314,7 @@ async def _validate_ticker(ticker: str) -> bool:
         return False
 
 
+@cached_fetch("yahoo.resolve_ticker", ttl_seconds=86400)
 async def resolve_ticker(company_name: str) -> str:
     """Resolve company name to NSE ticker using dict mapping and yahooquery fallback."""
     TICKER_MAP = {
@@ -462,6 +469,7 @@ def scrape_screener(company_slug: str) -> dict:
         print(f"Screener scrape failed for {company_slug}: {e}")
         return {}
 
+@cached_fetch("nse.surveillance", ttl_seconds=3600)
 async def fetch_nse_risk_signals(symbol: str) -> dict:
     """Scrapes NSE for delivery %, circuit filter, bulk/block deal data"""
     try:
@@ -694,6 +702,7 @@ async def fetch_technical_data(ticker: str, hist_df: pd.DataFrame) -> dict:
         print(f"Technical metric computation failed: {e}")
         return {}
 
+@cached_fetch("worldbank.macro", ttl_seconds=86400)
 def fetch_world_bank_macro() -> dict:
     """Fetch macro indicators from World Bank API"""
     target_indicators = {
@@ -716,6 +725,7 @@ def fetch_world_bank_macro() -> dict:
         print(f"World Bank API failed: {e}")
     return result
 
+@cached_fetch("market.context", ttl_seconds=1800)
 def fetch_market_context() -> dict:
     """Fetches macro market data relevant to the stock's sector via yfinance"""
     import yfinance as yf
@@ -743,10 +753,12 @@ def fetch_market_context() -> dict:
         print(f"yFinance Macro fetch failed: {e}")
     return result
 
+@cached_fetch("rbi.repo_rate", ttl_seconds=86400)
 def fetch_rbi_repo_rate() -> dict:
     """Returns static baseline (live scraping DBIE is complex/fragile)"""
     return {"repo_rate": 6.50, "last_change": "Feb 2025", "stance": "neutral"}
 
+@cached_fetch("bse.governance", ttl_seconds=43200)
 async def fetch_bse_governance(bse_code: str) -> dict:
     """Fetches shareholding pattern & corporate announcements from BSE API"""
     if not bse_code: return {}
@@ -792,6 +804,7 @@ SECTOR_PEER_MAP = {
     "Utilities":            ["NTPC.NS","POWERGRID.NS","TATAPOWER.NS","ADANIGREEN.NS"],
 }
 
+@cached_fetch("yfinance.sector_peers", ttl_seconds=43200)
 async def fetch_sector_peers(ticker: str, sector: str) -> dict:
     """Fetch key valuation metrics for top 5 sector peers (concurrent, rate-limit safe)."""
     import asyncio
@@ -846,6 +859,7 @@ async def fetch_sector_peers(ticker: str, sector: str) -> dict:
         "peer_count":        len(peer_data),
     }
 
+@cached_fetch("nse.insider", ttl_seconds=21600)
 async def fetch_nse_insider_trading(symbol: str) -> list:
     """Returns recent insider buy/sell transactions (SAST/PIT disclosures)"""
     try:
@@ -998,6 +1012,7 @@ def _extract_fundamentals_from_screener(screener_data: dict) -> dict:
     return fundamentals
 
 
+@cached_fetch("yfinance.market_data", ttl_seconds=3600)
 async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
     """
     Fetch market data using a multi-layer fallback strategy.
@@ -1160,6 +1175,7 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
     return result
 
 
+@cached_fetch("market.breadth", ttl_seconds=1800)
 async def fetch_market_breadth() -> dict:
     """
     Fetches broad market context needed by Technical and Macro analysts.

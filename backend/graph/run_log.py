@@ -16,6 +16,44 @@ os.makedirs(RUN_LOG_DIR, exist_ok=True)
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+# Run logs are the raw material for backtesting, so they are kept generously —
+# but not forever. Render's disk is ephemeral and unbounded growth there is a
+# slow-motion outage rather than a feature.
+MAX_RUN_LOGS = int(os.environ.get("MAX_RUN_LOGS", "500") or 500)
+
+
+def prune_run_logs(max_files: int = MAX_RUN_LOGS) -> int:
+    """Keep the newest `max_files` run logs, delete the rest. Returns the count
+    removed. Never raises: losing a log must not fail an analysis."""
+    try:
+        if not os.path.isdir(RUN_LOG_DIR):
+            return 0
+        entries = []
+        for name in os.listdir(RUN_LOG_DIR):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(RUN_LOG_DIR, name)
+            try:
+                entries.append((path, os.path.getmtime(path)))
+            except OSError:
+                continue
+        if len(entries) <= max_files:
+            return 0
+        entries.sort(key=lambda e: e[1], reverse=True)   # newest first
+        removed = 0
+        for path, _ in entries[max_files:]:
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+        if removed:
+            logger.info(f"[run-log] pruned {removed} old run logs (cap {max_files})")
+        return removed
+    except Exception as exc:
+        logger.debug(f"[run-log] prune skipped: {exc}")
+        return 0
+
 
 def new_run_id() -> str:
     return f"run_{datetime.now(IST).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
@@ -72,6 +110,7 @@ def write_run_log(
     }
 
     try:
+        prune_run_logs()
         path = os.path.join(RUN_LOG_DIR, f"{_safe(run_id)}__{_safe(ticker)}.json")
         with open(path, "w") as f:
             json.dump(payload, f, default=str, indent=2)

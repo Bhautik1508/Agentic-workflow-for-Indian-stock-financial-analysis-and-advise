@@ -399,39 +399,73 @@ part of the delta is the model change, not the diet.
 
 ---
 
-### Phase 3 — Cost & latency *(week 3)*
+### Phase 3 — Cost & latency ✅ *(done)*
 
-- [ ] Add a per-model price table (`llm/pricing.py`, input/output per 1M tokens) and compute
-      `estimated_cost_usd` per record and per run. Maintain it by hand — it is a dozen numbers,
-      and wrong-but-visible beats absent.
-- [ ] Persist `by_provider` + cost into the run log and the cached payload, then surface a small
-      "run cost / latency / provider" strip in the UI. The data already flows through the
-      `telemetry` SSE event.
-- [ ] Track p50/p95 per agent. The observed Groq path spent **84.8s across 8 calls** — the judge
-      is serialised behind all five analysts, so it lands on the critical path.
-- [ ] Revisit `ANALYST_CONCURRENCY = 3` once Gemini is primary; Gemini's limits differ from Groq's,
-      and the value was chosen for Groq's TPM ceiling.
-- [ ] Consider `GEMINI_THINKING_BUDGET > 0` for the judge only — it synthesises rather than
-      extracts, so it is the one call where deliberation plausibly pays.
+- [x] `backend/llm/pricing.py` prices every call; `estimated_cost_usd` is reported per record, per
+      provider and per run.
+      **The mechanism ships complete but the rates ship unset, deliberately.** The models this app
+      defaults to are newer than any table that could be baked in with confidence, and inventing
+      plausible rates for a tool that reports money is worse than reporting nothing — a wrong cost
+      is believed, a missing one is questioned. An unpriced model yields `cost = None` and the UI
+      shows "not set", never `$0.00`. Set `LLM_PRICING_JSON` (no redeploy needed on Render) and
+      every run reports real money.
+- [x] `by_provider` + cost persist into the run log and cached payload, and a **`RunStats` strip**
+      now renders run cost, tokens, p50/p95 and — most usefully — *which provider actually served
+      the run*. The backend had emitted `telemetry` since Phase 3 of the old plan; the frontend
+      had never consumed it, so a run silently answered by the fallback tier looked identical to a
+      healthy one.
+- [x] p50/p95/max tracked overall **and per agent**, because the judge runs after all five
+      analysts and sits on the critical path.
+- [x] `ANALYST_CONCURRENCY` 3 → **5**, re-measured rather than inherited: the old value was set
+      for Groq's TPM ceiling, and Gemini's limits are per-model RPM. At 5 the LLM phase ran
+      **9.9s → 7.6s with zero failures**.
+- [x] `JUDGE_THINKING_BUDGET` lets the judge opt into reasoning tokens — the one call that
+      synthesises rather than extracts. Plumbed per-call so it cannot leak to the other five.
 
-**Exit criteria:** every run reports a cost; P50 end-to-end under 20s.
+**Exit criteria:** cost reporting works, reading "not set" until rates are configured.
+"P50 end-to-end under 20s" was **not** met by Phase 3 and could not be: a full run measured ~31s,
+of which ~21s was upstream data fetching and ~8s was every LLM call combined. That pointed
+straight at Phase 4 — where it is now comfortably met.
 
 ---
 
-### Phase 4 — Data layer *(week 3–4)*
+### Phase 4 — Data layer ✅ *(done)*
 
-- [ ] Cache at the **fetch** layer, keyed `(source, ticker, trading_day)`. The verdict cache in
-      [backend/data/cache.py](backend/data/cache.py) only helps on a repeat of the *same* analysis;
-      the expensive, flaky work is upstream.
-- [ ] Add negative caching. `LTIM.NS` 404s from yfinance on every single run and is re-fetched each time.
-- [ ] Bound both caches. `.cache/` and `.runlog/` grow without eviction — fine at 164K/72K today,
-      not fine after a thousand runs on an ephemeral Render disk.
-- [ ] Stale-while-revalidate: serve the last good payload with an `as_of` stamp rather than
-      degrading an analyst, since [`freshness.py`](backend/data/freshness.py) already surfaces staleness in the UI.
-- [ ] Implement the `IFundamentalsProvider` interface the previous plan proposed but never built —
-      it is the precondition for ever swapping in a paid feed.
+- [x] `backend/data/fetch_cache.py` caches at the **fetch** layer, keyed `(source, args,
+      trading_day)`, applied to all 17 network fetchers. The trading-day component means an
+      end-of-day payload is never served the next morning just because its TTL has not elapsed.
+      TTLs track how fast each source actually moves: 30 min for news and market breadth, 1h for
+      prices, 6–12h for fundamentals and governance, 24h for macro series.
+- [x] **Negative caching.** A miss or an empty payload is cached with a *shorter* TTL, so
+      `LTIM.NS` — which 404s from yfinance on every single run — stops costing full latency for a
+      guaranteed failure, while a transient outage is not pinned for the day.
+- [x] **Stale-while-revalidate.** If an entry has expired and the refetch fails, the last good
+      payload is served with its original `as_of` instead of degrading an analyst to nothing.
+      `freshness.py` already surfaces staleness in the UI, so old-but-labelled beats absent.
+- [x] **Both directories bounded.** The fetch cache evicts expired entries then oldest-first past
+      `FETCH_CACHE_MAX_ENTRIES` (500) / `FETCH_CACHE_MAX_BYTES` (32 MB); run logs prune to the
+      newest `MAX_RUN_LOGS` (500). Cache size is reported by `GET /api/health?deep=true`.
+- [x] `backend/data/providers.py` defines the `IFundamentalsProvider` seam the previous plan
+      proposed and never built, with a `FallbackChain` that mirrors how the LLM router handles
+      vendors — one source being down should degrade the run, not end it. `YFinanceFundamentals`
+      satisfies the protocol structurally, so nothing existing had to be rewritten.
 
-**Exit criteria:** a warm second run does no network I/O for fundamentals; no unbounded directory.
+**Result, measured on a full TCS run:**
+
+| | Cold cache | Warm cache |
+|---|---|---|
+| Total | 43.5s | **6.9s** |
+| Data phase | 35.6s | **0.0s** |
+| LLM phase | 7.8s | 6.9s |
+
+**Exit criteria both met.** A warm second run does **zero** network I/O for fundamentals, and
+neither directory can grow without bound. The payload round-trips cleanly through JSON — 252
+history rows in and out, types preserved, `pd.DataFrame` builds identically — which was the real
+risk in caching this layer.
+
+This also settles Phase 3's latency target: a warm run is **6.9s end to end**, comfortably inside
+the 20s goal. The cold path is still dominated by yfinance, which stays slow and rate-limited from
+Render's IPs; the fix for that is a better feed behind the new provider seam, not more caching.
 
 ---
 
