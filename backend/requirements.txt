@@ -1,13 +1,22 @@
+# Upper bounds are deliberate. Every unbounded ">=" made each Render rebuild a
+# lottery: one deploy silently installed pandas 3.0.5 and numpy 2.4.6 where the
+# code had only ever run against pandas 2.2 / numpy 1.26. It happened to work,
+# which is the problem -- the next major could just as easily not, with no
+# signal until production broke.
+#
+# The ceilings cap the NEXT major rather than forcing a downgrade, so nothing
+# currently deployed changes. Raise one deliberately, after testing.
+
 fastapi==0.111.0
 uvicorn[standard]==0.30.0
 langgraph==0.2.14        # pulls langchain-core itself; full langchain is not used
-yfinance>=0.2.40
-yahooquery>=2.3.0
-groq>=1.0.0            # fallback provider
-google-genai>=1.0.0    # primary provider (Gemini)
-pandas>=2.0.0
-numpy>=1.26.0
-ta>=0.10.2
+yfinance>=0.2.40,<2.0
+yahooquery>=2.3.0,<3.0
+groq>=1.0.0,<2.0       # fallback provider
+google-genai>=1.0.0,<2.0    # primary provider (Gemini)
+pandas>=2.0.0,<4.0
+numpy>=1.26.0,<3.0
+ta>=0.10.2,<1.0
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 pydantic==2.8.2
@@ -16,4 +25,4 @@ sse-starlette>=2.0.0
 httpx>=0.27.0
 aiohttp>=3.10.6   # google-genai async transport needs ClientConnectorDNSError (added 3.10.6)
 python-multipart>=0.0.9
-lxml>=5.0.0
+lxml>=5.0.0,<7.0

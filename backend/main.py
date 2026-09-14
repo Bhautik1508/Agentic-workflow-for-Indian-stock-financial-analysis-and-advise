@@ -4,6 +4,7 @@ load_dotenv()
 import asyncio
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -98,6 +99,57 @@ app.add_middleware(
     allow_credentials=_allow_credentials,
     allow_methods=["GET", "OPTIONS"],   # this API is read-only
     allow_headers=["*"],
+)
+
+logger.info(
+    f"[cors] allowing origins={allowed_origins} regex={_origin_regex!r} "
+    f"credentials={_allow_credentials}"
+)
+
+
+class BlockedOriginLogger:
+    """Log when a browser request arrives from an origin we do not allow.
+
+    A CORS rejection is invisible server-side by default: the request is
+    processed and logged as 200, and only the *browser* discards the response.
+    That cost a real debugging cycle — the deployed frontend looked completely
+    broken while every log line said 200 OK, because ALLOWED_ORIGINS had been
+    set to a Vercel *deployment* URL instead of the stable production alias.
+
+    Written as raw ASGI rather than `@app.middleware("http")` on purpose.
+    That decorator builds a BaseHTTPMiddleware, which wraps the response body in
+    a task group and interferes with streaming responses — and this app's main
+    endpoint is SSE. It broke the SSE tests immediately; in production it would
+    have risked the analysis stream itself, to add a log line. This version
+    inspects the request scope and passes everything through untouched.
+    """
+
+    def __init__(self, app, *, allowed, origin_regex):
+        self.app = app
+        self.allowed = set(allowed)
+        self.pattern = re.compile(origin_regex) if origin_regex else None
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            origin = None
+            for key, value in scope.get("headers") or []:
+                if key == b"origin":
+                    origin = value.decode("latin-1")
+                    break
+            if origin and origin not in self.allowed:
+                if not (self.pattern and self.pattern.fullmatch(origin)):
+                    logger.warning(
+                        f"[cors] BLOCKED origin {origin!r} — the browser will discard this "
+                        f"response even though the request succeeds. "
+                        f"Allowed: {sorted(self.allowed)}"
+                        + (f" regex={self.pattern.pattern!r}" if self.pattern else "")
+                        + ". Set ALLOWED_ORIGINS to the origin your users actually visit."
+                    )
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(
+    BlockedOriginLogger, allowed=allowed_origins, origin_regex=_origin_regex
 )
 
 # Include routers
