@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Pre-commit guard: block secrets and bulk directories from entering git history.
+#
+# Written after `backend/.env` reached the public repo in 62927b7. Deleting the
+# file later did not unpublish it — Google detected and revoked the key anyway.
+# The cheapest fix is to never let it in.
+#
+# Works with zero dependencies. If `gitleaks` is installed it runs that too.
+# Install with: bash scripts/install-hooks.sh
+# Bypass (only when you are certain): git commit --no-verify
+
+set -uo pipefail
+
+RED=$'\033[0;31m'; YEL=$'\033[0;33m'; GRN=$'\033[0;32m'; OFF=$'\033[0m'
+fail=0
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# The scanner files legitimately contain these patterns; skip them.
+is_scanner_file() {
+  case "$1" in
+    scripts/pre-commit|scripts/install-hooks.sh|.gitleaks.toml|scripts/audit_secrets.py) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# ── 1. Never commit a real .env ──────────────────────────────────────────────
+while IFS= read -r f; do
+  base=$(basename "$f")
+  case "$base" in
+    .env|.env.*)
+      case "$base" in
+        .env.example|.env.sample|.env.template) ;;
+        *)
+          echo "${RED}[BLOCKED]${OFF} $f — environment files must never be committed."
+          echo "          Remove it:  git reset HEAD -- '$f'"
+          fail=1 ;;
+      esac ;;
+  esac
+done <<< "$staged"
+
+# ── 2. Never commit bulk/vendored directories ────────────────────────────────
+# backend/venv is already 12,669 tracked files; stop it growing.
+while IFS= read -r f; do
+  case "$f" in
+    */venv/*|venv/*|*/node_modules/*|node_modules/*|*/.next/*|.next/*|*/__pycache__/*)
+      echo "${RED}[BLOCKED]${OFF} $f — vendored/build directory, do not commit."
+      fail=1 ;;
+  esac
+done <<< "$staged"
+
+# ── 3. Scan staged content for credential patterns ───────────────────────────
+# Patterns are assembled at runtime so this file does not trip its own scanner.
+A='AIza[0-9A-Za-z_-]{35}'                      # Google API key
+B='gsk_[A-Za-z0-9]{32,}'                       # Groq
+C='sk-[A-Za-z0-9_-]{20,}'                      # OpenAI-style
+D='AKIA[0-9A-Z]{16}'                           # AWS access key id
+E='eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}'  # JWT (Supabase et al.)
+
+while IFS= read -r f; do
+  is_scanner_file "$f" && continue
+  [ -f "$f" ] || continue
+  added=$(git diff --cached -U0 -- "$f" | grep '^+' | grep -v '^+++' || true)
+  [ -z "$added" ] && continue
+  for pat in "$A" "$B" "$C" "$D" "$E"; do
+    if printf '%s' "$added" | grep -qE "$pat"; then
+      echo "${RED}[BLOCKED]${OFF} $f — looks like a live credential."
+      echo "          Move it to .env (gitignored) and read it via os.environ."
+      fail=1
+      break
+    fi
+  done
+done <<< "$staged"
+
+# ── 4. gitleaks, if present ──────────────────────────────────────────────────
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks protect --staged --redact --no-banner 2>/dev/null; then
+    echo "${RED}[BLOCKED]${OFF} gitleaks flagged a staged secret."
+    fail=1
+  fi
+else
+  echo "${YEL}[note]${OFF} gitleaks not installed — using built-in patterns only."
+  echo "       Stronger scanning: brew install gitleaks"
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo
+  echo "${RED}Commit rejected.${OFF} If a secret was ever pushed, rotating it is the real fix —"
+  echo "removing the file from a later commit does not unpublish it."
+  echo "Audit what is still exposed:  python scripts/audit_secrets.py"
+  exit 1
+fi
+
+echo "${GRN}[ok]${OFF} pre-commit secret scan clean"
+exit 0

@@ -1,0 +1,26 @@
+# gitleaks config — optional second layer behind scripts/pre-commit.
+#   brew install gitleaks
+#   gitleaks detect --source . --redact      # scan full history
+#   gitleaks protect --staged --redact       # scan staged changes
+title = "StockSage AI secret scanning"
+
+[extend]
+useDefault = true   # inherit gitleaks' built-in rule set
+
+[[rules]]
+id = "stocksage-provider-keys"
+description = "LLM / market-data provider API keys"
+regex = '''(?i)\b(GROQ|GOOGLE|GEMINI|NEWS|MARKETAUX|ALPHA_VANTAGE|SUPABASE|UPSTASH)[A-Z_]*(KEY|TOKEN|SECRET|URL)\s*[:=]\s*['"]?[A-Za-z0-9_\-\.]{16,}'''
+tags = ["api-key", "stocksage"]
+
+[allowlist]
+description = "Templates, docs and the scanners themselves"
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.sample$''',
+  '''\.gitleaks\.toml$''',
+  '''scripts/pre-commit$''',
+  '''scripts/install-hooks\.sh$''',
+  '''scripts/audit_secrets\.py$''',
+  '''IMPROVEMENTS\.md$''',
+]
