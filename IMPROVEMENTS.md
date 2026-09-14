@@ -25,16 +25,19 @@ not just between models on one provider.
 | [backend/requirements.txt](backend/requirements.txt) | `+google-genai`, `aiohttp>=3.10.6` (see below), `-langchain-google-genai` (unused, and it pins an old `google-generativeai` that fights `google-genai`). |
 | [backend/tests/test_llm_providers.py](backend/tests/test_llm_providers.py) | **New**, 20 tests: chain order, key-missing behaviour, Gemini message translation, cross-provider failover, credential-skip. |
 
-Default chain: `gemini-2.5-flash` → `gemini-2.5-flash` (one retry) → `openai/gpt-oss-120b` → `openai/gpt-oss-20b`.
+Default chain: `gemini-3.6-flash` → `gemini-3.5-flash-lite` → `openai/gpt-oss-120b` → `openai/gpt-oss-20b`.
 A tier with no API key is skipped, so the app still runs on one provider.
+
+Every model ID below was measured against this account, not assumed — see §1.5.
 
 Configure entirely from env — a model decommission becomes a dashboard change, not a redeploy:
 
 ```bash
 LLM_PRIMARY_PROVIDER=gemini   # or groq, to invert the chain
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_RETRIES=1              # extra Gemini attempts before dropping to Groq
-GEMINI_THINKING_BUDGET=0      # 0 = thinking off (fast). Raise for deeper judge reasoning.
+GEMINI_MODEL=gemini-3.6-flash
+GEMINI_FALLBACK_MODEL=gemini-3.5-flash-lite   # different model = different capacity pool
+GEMINI_RETRIES=0              # same-model retries measurably do not help; see §1.5
+GEMINI_THINKING_BUDGET=       # leave BLANK - Gemini 3.x rejects a 0 budget with HTTP 400
 GROQ_MODEL=openai/gpt-oss-120b
 GROQ_FALLBACK_MODEL=openai/gpt-oss-20b
 ```
@@ -52,10 +55,23 @@ GROQ_FALLBACK_MODEL=openai/gpt-oss-20b
 
 ### Verified end-to-end
 
-A full `run_stock_analysis("Tata Consultancy Services")` completed with all five analysts plus
-the judge, producing `BUY | conf 0.80 | target ₹2563.70 | stop ₹2088.96`. With the Gemini key
-currently revoked (§1.1), all 14 calls failed over to Groq and the run still succeeded — which
-is the failover behaviour working as designed. Test suite: **163 passing**.
+A full `run_stock_analysis("Tata Consultancy Services")` completes with all five analysts plus
+the judge: `BUY | conf 0.85 | target ₹2563.70 | stop ₹2088.96`.
+
+**The entire run is served by Gemini — Groq is never called.** 11 LLM calls, 21,027 tokens. Where
+`gemini-3.6-flash` hits a capacity 503, `gemini-3.5-flash-lite` absorbs it inside the same
+provider, which is exactly what the two-model Gemini tier is for.
+
+Test suite: **166 passing**.
+
+> **Tuning note.** `primary_success_rate` sits at ~0.17: under 5-way analyst concurrency on a
+> free-tier key, `gemini-3.6-flash` 503s on most calls and `gemini-3.5-flash-lite` does the real
+> work. The run succeeds and stays on Gemini either way. If you would rather skip the wasted
+> round-trip than opportunistically reach for the stronger model, invert them:
+> ```bash
+> GEMINI_MODEL=gemini-3.5-flash-lite
+> GEMINI_FALLBACK_MODEL=gemini-3.6-flash
+> ```
 
 ---
 
@@ -120,6 +136,38 @@ Three consequences:
 > **Note on this pass:** upgrading `aiohttp` to satisfy §1.3 modified ~70 tracked venv files.
 > Do not revert them — aiohttp 3.9.5 breaks Gemini. Untracking the venv (Phase 1) makes the
 > question moot.
+
+### 1.5 🟠 What the new Gemini key revealed
+
+After rotation the key worked, but three assumptions did not survive contact with the API.
+All measured, not inferred:
+
+| Assumption | Reality |
+|---|---|
+| `gemini-2.5-flash` is a safe default | **404 — "no longer available to new users."** The entire `gemini-2.5-*` family is gone for recently-created keys. |
+| `thinking_budget=0` saves latency | **400 INVALID_ARGUMENT** on every Gemini 3.x model. Thinking cannot be disabled there, so the "optimisation" made 3.x unusable. The field is now sent only when explicitly configured. |
+| An always-current alias is safest | `gemini-flash-latest`, `gemini-3.8-flash`, `gemini-3.7-flash` measured **0/3 — persistent `503 high demand`**. The newest models are the most over-subscribed; an alias trades a 404 for a 503, which fails *every* time instead of loudly once. |
+
+Measured over 3 runs each, via the real provider code path:
+
+| Model | Success | Median latency |
+|---|---|---|
+| `gemini-3.6-flash` | 3/3 | 3.8s |
+| `gemini-3.5-flash` | 3/3 | 3.7s |
+| `gemini-3.5-flash-lite` | 3/3 | **1.0s** |
+| `gemini-flash-latest` / `3.8` / `3.7` | **0/3** | — (503) |
+
+Two consequences for the chain:
+
+- **The in-provider fallback is a different model, not a retry.** A 503 is a capacity signal for
+  one model's pool; asking the same pool again changes nothing.
+- **`GEMINI_RETRIES` now defaults to 0.** Across a full 6-agent run, *every* same-model retry
+  after a 503/429 failed again. Removing them cut a run from 16 LLM calls to 11 with identical
+  output.
+
+A caveat the health probe now prints: **a model can be listed and still 404 on use.** Deprecated
+models stay visible to the listing API, so `check_llm_health.py` without `--live` reported
+`gemini-2.5-flash` as fine while every real call failed. Use `--live`.
 
 ---
 

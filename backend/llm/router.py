@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # Re-exported for callers that still reference these names.
-DEFAULT_PRIMARY_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
+DEFAULT_PRIMARY_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-3.6-flash"
 DEFAULT_FALLBACK_MODEL = os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
 
 _RATE_LIMIT_MARKERS = (

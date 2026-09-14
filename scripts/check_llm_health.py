@@ -43,9 +43,9 @@ def _truncate(text: str, limit: int = 130) -> str:
 
 # ── Gemini ───────────────────────────────────────────────────────────────────
 
-def probe_gemini(configured_model: str) -> dict:
+def probe_gemini(configured_models: list[str]) -> dict:
     result = {
-        "provider": "gemini", "configured_model": configured_model,
+        "provider": "gemini", "configured_model": ", ".join(configured_models),
         "key_present": bool(os.environ.get("GOOGLE_API_KEY")),
         "reachable": False, "model_exists": None, "models": [], "error": None,
     }
@@ -63,7 +63,10 @@ def probe_gemini(configured_model: str) -> dict:
                 names.append(str(m.name).replace("models/", ""))
         result["reachable"] = True
         result["models"] = sorted(names)
-        result["model_exists"] = configured_model in names
+        missing = [m for m in configured_models if m not in names]
+        result["model_exists"] = not missing
+        if missing:
+            result["error"] = f"configured model(s) not listed: {', '.join(missing)}"
     except Exception as exc:
         result["error"] = _truncate(exc)
     return result
@@ -141,14 +144,22 @@ def main() -> int:
                         help="print every model each provider serves")
     args = parser.parse_args()
 
-    gemini_model = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
+    # Import the defaults rather than restating them — a second copy here would
+    # drift from the router and report on a model the app does not actually use.
+    from llm.providers import (DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_FALLBACK_MODEL,
+                               DEFAULT_GROQ_MODEL, DEFAULT_GROQ_FALLBACK_MODEL)
+
+    gemini_models = [
+        os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL,
+        os.environ.get("GEMINI_FALLBACK_MODEL") or DEFAULT_GEMINI_FALLBACK_MODEL,
+    ]
     groq_models = [
-        os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b",
-        os.environ.get("GROQ_FALLBACK_MODEL") or "openai/gpt-oss-20b",
+        os.environ.get("GROQ_MODEL") or DEFAULT_GROQ_MODEL,
+        os.environ.get("GROQ_FALLBACK_MODEL") or DEFAULT_GROQ_FALLBACK_MODEL,
     ]
     primary = (os.environ.get("LLM_PRIMARY_PROVIDER") or "gemini").lower()
 
-    probes = [probe_gemini(gemini_model), probe_groq(groq_models)]
+    probes = [probe_gemini(gemini_models), probe_groq(groq_models)]
     configured = [p for p in probes if p["key_present"]]
 
     live = asyncio.run(probe_live()) if args.live else None
@@ -168,12 +179,16 @@ def main() -> int:
             mark = "ok" if p["model_exists"] else "!!"
             state = "serves" if p["model_exists"] else "DOES NOT SERVE"
             print(f"  [{mark}] {p['provider']:8} reachable, {state} {p['configured_model']}"
-                  f"  ({len(p['models'])} models available)")
+                  f"  ({len(p['models'])} models listed)")
             if p["error"]:
                 print(f"       {p['error']}")
             if args.list_models:
                 for name in p["models"]:
                     print(f"         - {name}")
+
+        if not args.live:
+            print("\n  note: a model can be LISTED yet 404 on use (deprecated models stay\n"
+                  "        visible to the listing API). Use --live to actually exercise it.")
 
         if live:
             print()

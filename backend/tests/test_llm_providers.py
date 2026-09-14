@@ -42,9 +42,12 @@ def test_chain_puts_gemini_first_by_default(monkeypatch):
     monkeypatch.delenv("GEMINI_RETRIES", raising=False)
 
     chain = build_default_chain()
-    assert [a.provider.name for a in chain][:2] == ["gemini", "gemini"]  # 1 call + 1 retry
+    assert [a.provider.name for a in chain][:2] == ["gemini", "gemini"]  # primary + alt model
     assert [a.provider.name for a in chain][-2:] == ["groq", "groq"]
     assert chain[0].model.startswith("gemini")
+    # The in-provider fallback must be a DIFFERENT model — retrying one model
+    # does nothing against a 503 on that model's capacity pool.
+    assert chain[1].model != chain[0].model
 
 
 def test_primary_provider_env_flips_the_order(monkeypatch):
@@ -75,7 +78,43 @@ def test_gemini_retries_env_controls_attempt_count(monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "g")
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setenv("GEMINI_RETRIES", "3")
-    assert len(build_default_chain()) == 4  # 1 initial + 3 retries
+    assert len(build_default_chain()) == 5  # 1 initial + 3 retries + 1 alt model
+
+
+def test_gemini_retries_default_to_zero(monkeypatch):
+    """Measured: same-model retries after a 503/429 failed every time and only
+    added latency. Straight to the alternate model instead."""
+    monkeypatch.setenv("GOOGLE_API_KEY", "g")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_RETRIES", raising=False)
+    chain = build_default_chain()
+    assert len(chain) == 2
+    assert chain[0].model != chain[1].model
+
+
+def test_gemini_default_is_not_a_retired_or_oversubscribed_model(monkeypatch):
+    """Guards two measured failures: the gemini-2.5-* family 404s for new keys,
+    and gemini-flash-latest / 3.8 / 3.7 returned 503 on every attempt."""
+    monkeypatch.setenv("GOOGLE_API_KEY", "g")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    monkeypatch.delenv("GEMINI_FALLBACK_MODEL", raising=False)
+    models = {a.model for a in build_default_chain()}
+    assert not any(m.startswith("gemini-2.5") for m in models)
+    assert "gemini-flash-latest" not in models
+
+
+def test_thinking_config_omitted_unless_explicitly_set(monkeypatch):
+    """Gemini 3.x rejects thinking_budget=0 with 400 INVALID_ARGUMENT, so the
+    field must not be sent by default."""
+    monkeypatch.delenv("GEMINI_THINKING_BUDGET", raising=False)
+    models = _FakeGeminiModels()
+    provider = GeminiProvider(api_key="k")
+    provider._client = _FakeGeminiClient(models)
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        provider.complete([{"role": "user", "content": "hi"}], model="gemini-3.6-flash")
+    )
+    assert models.captured["config"].thinking_config is None
 
 
 def test_groq_models_are_not_the_retired_llama_ids(monkeypatch):

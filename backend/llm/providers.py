@@ -77,10 +77,13 @@ def _split_system(messages: List[Dict[str, Any]]) -> tuple[str, List[Dict[str, A
 class GeminiProvider:
     """Google Gemini via the `google-genai` SDK.
 
-    Thinking is disabled by default (`GEMINI_THINKING_BUDGET=0`). Every agent
-    here does structured extraction over a large, fully-supplied context rather
-    than open-ended reasoning, so thinking tokens mostly buy latency. Raise the
-    budget if you want the judge to deliberate — see docs in IMPROVEMENTS.md.
+    Thinking config is only sent when `GEMINI_THINKING_BUDGET` is explicitly set.
+
+    Do not "helpfully" default it to 0. Gemini 3.x models reject a zero budget
+    with `400 INVALID_ARGUMENT` — thinking cannot be disabled there — so a
+    well-meant latency optimisation silently made every 3.x model unusable.
+    Leaving the field off lets each model apply its own default, which is the
+    only behaviour that works across generations.
     """
 
     name = "gemini"
@@ -131,10 +134,15 @@ class GeminiProvider:
         if max_output_tokens:
             config_kwargs["max_output_tokens"] = max_output_tokens
 
-        thinking_budget = _int_env("GEMINI_THINKING_BUDGET", 0)
-        if thinking_budget >= 0:
-            # 2.5-pro ignores a 0 budget (thinking is always on there); harmless.
-            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
+        # Opt-in only — see the class docstring for why this is not defaulted.
+        thinking_budget = os.environ.get("GEMINI_THINKING_BUDGET", "").strip()
+        if thinking_budget:
+            try:
+                config_kwargs["thinking_config"] = types.ThinkingConfig(
+                    thinking_budget=int(thinking_budget)
+                )
+            except (TypeError, ValueError):
+                pass  # unparseable budget: fall back to the model's own default
 
         response = await client.aio.models.generate_content(
             model=model,
@@ -289,7 +297,24 @@ def _int_env(name: str, default: int) -> int:
 # Defaults are env-overridable so a model decommission is a dashboard change,
 # not a redeploy. Groq's llama-3.x models were retired from the API; the
 # gpt-oss pair below is what the account actually serves today.
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+# Model defaults, all measured against this account rather than assumed.
+#
+# The whole `gemini-2.5-*` family now returns 404 "no longer available to new
+# users" for recently-created keys, so it cannot be the default.
+#
+# `gemini-flash-latest`, `gemini-3.8-flash` and `gemini-3.7-flash` measured 0/3
+# success — a persistent `503 high demand`. The newest models are the most
+# over-subscribed, so an always-current alias trades a 404 for a 503, which is
+# worse: it fails every time instead of failing loudly once.
+#
+# `gemini-3.6-flash` and `gemini-3.5-flash` both measured 3/3 at ~3.7s;
+# `gemini-3.5-flash-lite` 3/3 at ~1.0s but far terser output.
+#
+# So: a reliable current model as primary, and a DIFFERENT, faster Gemini model
+# as the in-provider fallback. Retrying one model does nothing against a 503 on
+# that model's capacity pool — a different model is a different pool.
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_GROQ_FALLBACK_MODEL = "openai/gpt-oss-20b"
 
@@ -300,6 +325,7 @@ def build_default_chain() -> List[Attempt]:
     Set `LLM_PRIMARY_PROVIDER=groq` to invert the order without touching code.
     """
     gemini_model = os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+    gemini_fallback = os.environ.get("GEMINI_FALLBACK_MODEL") or DEFAULT_GEMINI_FALLBACK_MODEL
     groq_model = os.environ.get("GROQ_MODEL") or DEFAULT_GROQ_MODEL
     groq_fallback = os.environ.get("GROQ_FALLBACK_MODEL") or DEFAULT_GROQ_FALLBACK_MODEL
 
@@ -308,9 +334,13 @@ def build_default_chain() -> List[Attempt]:
 
     gemini_tier: List[Attempt] = []
     if gemini.is_configured():
-        # One in-provider retry: a 429 on Gemini is usually a short burst, and
-        # retrying the good model beats dropping a tier for a transient blip.
-        gemini_tier = [Attempt(gemini, gemini_model)] * (1 + _int_env("GEMINI_RETRIES", 1))
+        # GEMINI_RETRIES defaults to 0 on measured evidence: across a full
+        # 6-agent run, every same-model retry after a 503/429 failed again and
+        # only cost latency. A different model is a different capacity pool, so
+        # go straight there. Set GEMINI_RETRIES=1 to reinstate the retry.
+        gemini_tier = [Attempt(gemini, gemini_model)] * (1 + _int_env("GEMINI_RETRIES", 0))
+        if gemini_fallback and gemini_fallback != gemini_model:
+            gemini_tier.append(Attempt(gemini, gemini_fallback))
 
     groq_tier: List[Attempt] = []
     if groq.is_configured():
