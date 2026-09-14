@@ -148,7 +148,7 @@ Ranked by (risk removed) ÷ (effort). Items 1–2 are incident follow-ups.
 
 > Nothing else in this document matters while two live keys are public and the primary model is dead.
 
-**Status: tooling built ✅ — key rotation still pending 🔴 (only you can do it).**
+**Status: everything automatable is done ✅ — key rotation is the one open item 🔴 (only you can do it).**
 
 #### a. Rotate the two exposed keys — blocking, and only you can do this
 
@@ -208,25 +208,42 @@ Current output, for reference:
       `dependabot_security_updates` is also `disabled`; enabling it would have flagged the
       `aiohttp` issue in §1.3.
 
-#### d. Purge history — prepared, awaiting your go-ahead ⏸
+#### d. Purge history — done ✅
 
-[`scripts/purge-history.sh`](scripts/purge-history.sh) removes `backend/.env` **and**
-`backend/venv` from all history in one rewrite. Dry-run by default; it **never pushes** — the
-irreversible step stays a deliberate act.
+Ran [`scripts/purge-history.sh --execute`](scripts/purge-history.sh). A full mirror backup was
+taken first, and **nothing was pushed** — the force-push is left to you.
+
+| | Before | After |
+|---|---|---|
+| `.git` size | 93 MB | **548 KB** |
+| Tracked files | 12,763 | **104** |
+| `.env` blobs in history | 1 | **0** |
+| `backend/venv` objects | ~12,850 | **0** |
+| Commits | 60 | 59 (one venv-only commit became empty) |
+
+The virtualenv was untracked in the same pass (`git rm -r --cached backend/venv`) — files remain
+on disk, so the local environment still runs with the fixed `aiohttp 3.13.5`. Tests: 163 passing
+after the rewrite.
+
+Backup: `../Agentic-workflow-for-Indian-stock-financial-analysis-and-advise-backup-<ts>.git` (93 MB).
+Keep it until you have pushed and are satisfied.
+
+**One consequence worth understanding.** Purging the blob removed the very thing
+`audit_secrets.py` was reading to detect unrotated keys — left alone it would have reported
+"clean" the moment history was rewritten, while both keys were still leaked values. The hashes
+are now pinned in [`scripts/leaked_hashes.json`](scripts/leaked_hashes.json) (one-way SHA-256
+prefixes, safe to commit) and merged with any blobs still in history. Rewriting history cannot
+silence the check that proves rotation happened.
+
+**To publish the rewrite** — `filter-repo` drops the remote by design; it has been restored:
 
 ```bash
-brew install git-filter-repo
-bash scripts/purge-history.sh              # dry run
-bash scripts/purge-history.sh --execute    # local rewrite + automatic mirror backup
+git push --force --all origin
+git push --force --tags origin
 ```
 
-Dry run reports: `backend/.env` ~7 objects, `backend/venv` ~12,847 objects, `.git` currently 94 MB.
-
-**The repo has 0 forks**, so the usual objection to rewriting public history — breaking other
-people's clones — does not apply here. This is about as safe as a force-push gets.
-
-Order matters: rotate first, then purge. Purging does not un-leak an already-scraped key; it only
-stops the dead values being re-harvested and reclaims the 94 MB.
+The repo has **0 forks**, so no one else's clone breaks. Rotate the keys first: pushing does not
+un-leak an already-scraped value.
 
 **Exit criteria:** `audit_secrets.py` exits 0, and `check_llm_health.py --live` reports
 `served by 'gemini'` with `primary_success_rate: 1.0`.
