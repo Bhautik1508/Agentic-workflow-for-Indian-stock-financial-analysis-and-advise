@@ -65,18 +65,38 @@ app = FastAPI(
 )
 
 # --- CORS ---
-# For local dev: http://localhost:3000
-# For production: set ALLOWED_ORIGINS env var to your Vercel URL
-# e.g. ALLOWED_ORIGINS=https://your-app.vercel.app,https://your-custom-domain.com
+# `allow_origin_regex=r"https://.*\.vercel\.app"` with `allow_credentials=True`
+# let ANY Vercel deployment — including one an attacker owns — make credentialed
+# cross-origin calls to this API, and every /analyze call spends real tokens.
+#
+# Two changes:
+#   1. Credentials are off. Nothing here uses cookies or an Authorization
+#      header, so allowing them bought nothing and cost the wildcard's safety.
+#   2. The preview-deploy regex is opt-in via ALLOWED_ORIGIN_REGEX rather than
+#      hardcoded open. Scope it to your own project, e.g.
+#      ALLOWED_ORIGIN_REGEX=^https://my-app-[a-z0-9]+-myteam\.vercel\.app$
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+_origin_regex = (os.getenv("ALLOWED_ORIGIN_REGEX") or "").strip() or None
+_allow_credentials = (os.getenv("CORS_ALLOW_CREDENTIALS", "0") or "0").strip().lower() in ("1", "true", "yes")
+
+if _allow_credentials and _origin_regex:
+    # Refusing to fail silently: this is the exact combination that made the
+    # API reachable from anyone's deployment.
+    logger.critical(
+        "[cors] CORS_ALLOW_CREDENTIALS is on together with ALLOWED_ORIGIN_REGEX. "
+        "Any origin matching that pattern can make credentialed requests. "
+        "Disabling credentials — set explicit ALLOWED_ORIGINS instead."
+    )
+    _allow_credentials = False
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origin_regex=_origin_regex,
+    allow_credentials=_allow_credentials,
+    allow_methods=["GET", "OPTIONS"],   # this API is read-only
     allow_headers=["*"],
 )
 

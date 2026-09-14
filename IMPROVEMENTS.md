@@ -469,31 +469,62 @@ Render's IPs; the fix for that is a better feed behind the new provider seam, no
 
 ---
 
-### Phase 5 — Hardening & evaluation *(week 4–5)*
+### Phase 5 — Hardening & evaluation ✅ *(done)*
 
 **API hardening (#8)**
 
-- [ ] [backend/main.py:25](backend/main.py#L25) — `allow_origin_regex=r"https://.*\.vercel\.app"`
-      combined with `allow_credentials=True` lets **anyone's** Vercel deployment make credentialed
-      cross-origin calls. Replace with an explicit `ALLOWED_ORIGINS` allowlist.
-- [ ] Remove or auth-gate `GET /api/debug/data`
-      ([backend/api/routes.py:302](backend/api/routes.py#L302)) — it is a public, unauthenticated
-      endpoint that returns internal fetch state and full tracebacks.
-- [ ] Rate-limit `/api/analyze/*`. Every call costs real tokens and there is currently no ceiling.
-- [ ] Return generic error text to clients; keep `str(e)` in logs only. The SSE error path
-      currently forwards raw exception strings to the browser.
+- [x] **CORS.** `allow_origin_regex=r"https://.*\.vercel\.app"` with `allow_credentials=True` let
+      *anyone's* Vercel deployment make credentialed calls to an API where every request spends
+      real tokens. Credentials are now off (nothing here uses cookies or an `Authorization`
+      header, so allowing them bought nothing), the preview-deploy regex is opt-in via
+      `ALLOWED_ORIGIN_REGEX`, methods are limited to `GET`/`OPTIONS`, and enabling both together
+      logs `CRITICAL` and disables credentials rather than failing silently.
+      Verified: `https://attacker.vercel.app` is now refused.
+- [x] **`/api/debug/data` is gated and closed by default.** It was public and returned internal
+      fetch state plus full tracebacks. It now requires `DEBUG_API_TOKEN` and 404s without it —
+      closed-by-default, so forgetting to configure it cannot expose it.
+- [x] **Rate limiting** on `/api/analyze/*`: two windows, a burst allowance
+      (`ANALYZE_BURST_LIMIT`, default 5 / 5 min) and a daily cap (`ANALYZE_DAILY_LIMIT`, default
+      50), keyed on the first `X-Forwarded-For` hop. Returns 429 with `Retry-After`.
+      Scope stated honestly in the module: it is **in-process**, which is correct for one Render
+      instance and would need Redis behind multiple.
+- [x] **Generic client errors.** Raw `str(e)` no longer reaches the browser; the detail goes to
+      the log with the `run_id`, which is returned to the user so a report stays traceable.
+      Data-quality aborts still pass through in full — they are written for the user and carry
+      no internals.
 
 **Evaluation (#9)**
 
-- [ ] Golden-set regression: 15–20 tickers across sectors with a recorded expected band. Run
-      nightly; alert when a verdict moves more than one band.
-- [ ] Forward-return backtest over `.runlog/` — join past verdicts against 1M/3M realised returns.
-      Target the previous plan's hit-rate > 55% on BUY/STRONG_BUY at 1M.
-- [ ] Provider A/B: same ticker through Gemini and Groq, diff the verdicts. Quantifies what the
-      fallback tier actually costs you in quality — right now that is a guess.
-- [ ] Add CI (GitHub Actions): `pytest` on push. 163 tests exist and nothing runs them automatically.
+- [x] `backend/evaluation/` — `bands.py` (verdict distance), `golden_set.py` (18 tickers across
+      10 sectors with per-case tolerance), `backtest.py` (forward returns). Kept free of network
+      I/O so the logic is unit-tested; the `scripts/` CLIs do the fetching.
+- [x] `scripts/run_golden_set.py` — nightly drift check. Alerts when a verdict moves **more than
+      one band**; a BUY/STRONG_BUY flip on a borderline score is noise, and alerting on it trains
+      you to ignore the alert. Smoke-tested live: TCS and INFY both returned BUY as expected.
+- [x] `scripts/backtest.py` — joins run-log verdicts to realised 1M/3M/6M returns.
+- [x] `scripts/provider_ab.py` — same ticker through Gemini and Groq, diffed. Quantifies what the
+      fallback tier costs in quality, which was previously a guess.
+- [x] **CI** (`.github/workflows/ci.yml`): backend pytest on Python 3.11 (matching `runtime.txt`,
+      not the 3.9 venv that hid an asyncio bug), frontend `tsc` + tests + build, and a gitleaks
+      history scan. Verified the suite passes with dummy keys, so **no test reaches the network**.
 
-**Exit criteria:** a dashboard answering "were we right?"; CI green on every push.
+**First real backtest result — worth reading carefully.** Against the 7 run logs on disk:
+
+| Horizon | Scored | Hits | Hit rate |
+|---|---|---|---|
+| 1M | 6 | 1 | **17%** |
+| 3M | 6 | 2 | **33%** |
+| 6M | 0 | — | insufficient elapsed time |
+
+That is well below the >55% target, with an average directional return of **-6.2%**. But n=6, and
+the tool says so unprompted. This is not yet evidence the engine is bad — it is evidence that
+**the engine has never been measured**, which was the actual gap. Two deliberate choices keep the
+number honest: HOLD verdicts are excluded (there is no defensible definition of a correct HOLD
+without a benchmark) and an unelapsed horizon reports `null`, never 0%.
+
+**Exit criteria:** CI green on every push ✅. "A dashboard answering *were we right?*" — the
+measurement exists and runs, but it is a CLI, not a dashboard, and the sample is far too small to
+answer the question yet. It needs weeks of run logs before the number means anything.
 
 ---
 

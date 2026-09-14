@@ -1,10 +1,23 @@
-from fastapi import APIRouter, HTTPException
-from sse_starlette.sse import EventSourceResponse
-from graph.runner import run_stock_analysis
 import json
+import logging
 import os
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sse_starlette.sse import EventSourceResponse
+
+from api.security import enforce_analyze_rate_limit, require_debug_access
+from graph.runner import run_stock_analysis
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Shown to the browser in place of a raw exception. The detail goes to the log
+# with the run_id, so a user report is still traceable without handing the
+# internet our stack traces and upstream URLs.
+GENERIC_ERROR = (
+    "Analysis could not be completed due to an internal error. "
+    "Please try again; if it persists, quote the run id below."
+)
 
 @router.get("/verdict/{run_id}")
 async def get_frozen_verdict(run_id: str):
@@ -98,7 +111,7 @@ JUDGE_FIELDS = (
 )
 
 
-@router.get("/analyze/{company_name}")
+@router.get("/analyze/{company_name}", dependencies=[Depends(enforce_analyze_rate_limit)])
 async def analyze_stock(company_name: str, profile: str = "balanced"):
     """Main analysis endpoint — returns SSE stream of agent results.
 
@@ -176,10 +189,14 @@ async def analyze_stock(company_name: str, profile: str = "balanced"):
                     # Forward error events; data may be a dict (e.g. data-quality abort) or a string
                     err_data = event.get("data", {})
                     if isinstance(err_data, dict):
+                        # Data-quality aborts are written for the user and carry
+                        # no internals, so they pass through as-is.
                         run_data_quality = err_data.get("data_quality") or {}
                         yield {"event": "error", "data": json.dumps(err_data, default=str)}
                     else:
-                        yield {"event": "error", "data": json.dumps({"detail": str(err_data)})}
+                        logger.error(f"[analyze] run={run_id} ticker={ticker}: {err_data}")
+                        yield {"event": "error", "data": json.dumps(
+                            {"detail": str(err_data), "run_id": run_id})}
                     return
                 else:
                     yield {
@@ -201,9 +218,11 @@ async def analyze_stock(company_name: str, profile: str = "balanced"):
             if judge_payload:
                 save_analysis_to_cache(cache_key, cached_payload)
         except Exception as e:
+            # Full detail to the log, generic text to the browser.
+            logger.exception(f"[analyze] run={run_id} ticker={ticker} failed")
             yield {
                 "event": "error",
-                "data": json.dumps({"detail": str(e)})
+                "data": json.dumps({"detail": GENERIC_ERROR, "run_id": run_id})
             }
             write_run_log(
                 run_id, ticker or "UNKNOWN", company_name,
@@ -320,12 +339,16 @@ async def get_price_history(ticker: str, period: str = "1y"):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"[price-history] {ticker} failed")
+        raise HTTPException(status_code=500, detail="Could not load price history.")
 
-@router.get("/debug/data")
+@router.get("/debug/data", dependencies=[Depends(require_debug_access)])
 async def debug_data_fetch(ticker: str = "TCS.NS"):
-    """Diagnostic endpoint: tests yfinance data fetching directly and returns raw result or traceback."""
-    import traceback
+    """Diagnostic: tests yfinance fetching directly.
+
+    Gated by DEBUG_API_TOKEN and closed by default — it was previously public
+    and returned internal fetch state plus full tracebacks to anyone who asked.
+    """
     import yfinance as yf
     try:
         stock = yf.Ticker(ticker)
@@ -341,9 +364,6 @@ async def debug_data_fetch(ticker: str = "TCS.NS"):
             "info_keys_count": len(info)
         }
     except Exception as e:
-        return {
-            "success": False,
-            "ticker": ticker,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
+        logger.exception(f"[debug/data] {ticker} failed")
+        # Traceback goes to the log, not over the wire.
+        return {"success": False, "ticker": ticker, "error": str(e)[:200]}
