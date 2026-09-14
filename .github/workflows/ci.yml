@@ -50,7 +50,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # 22.6+ required: `npm test` runs node --experimental-strip-types,
+          # which does not exist on 20. CI on 20 failed while local (25.x)
+          # passed — the requirement is now declared in package.json engines.
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
