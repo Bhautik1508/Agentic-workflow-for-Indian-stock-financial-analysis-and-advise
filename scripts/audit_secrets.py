@@ -27,6 +27,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = REPO_ROOT / "backend" / ".env"
+PINNED_PATH = Path(__file__).resolve().parent / "leaked_hashes.json"
 
 
 def _git(*args: str) -> str:
@@ -67,6 +68,16 @@ def find_leaked_env_blobs() -> list[str]:
     return blobs
 
 
+def load_pinned() -> dict[str, str]:
+    """Hashes recorded before the blob was purged from history."""
+    if not PINNED_PATH.exists():
+        return {}
+    try:
+        return json.loads(PINNED_PATH.read_text()).get("hashes", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true", help="machine-readable output")
@@ -83,10 +94,13 @@ def main() -> int:
     current = _parse_env(ENV_PATH.read_text())
     blobs = find_leaked_env_blobs()
 
-    # Map each leaked hash to the keys it was stored under.
+    # Merge both sources: blobs still in history, plus the pinned record that
+    # survives a history rewrite.
     leaked: dict[str, str] = {}
     for sha in blobs:
         leaked.update(_parse_env(_git("cat-file", "-p", sha)))
+    pinned = load_pinned()
+    leaked.update(pinned)
 
     findings = []
     for key in sorted(set(current) | set(leaked)):
@@ -104,13 +118,14 @@ def main() -> int:
 
     if args.json:
         print(json.dumps(
-            {"env_blobs_in_history": len(blobs), "findings": findings,
-             "exposed_count": len(exposed)},
+            {"env_blobs_in_history": len(blobs), "pinned_hashes": len(pinned),
+             "findings": findings, "exposed_count": len(exposed)},
             indent=2,
         ))
         return 1 if exposed else 0
 
-    print(f"Scanned {len(blobs)} `.env` blob(s) in git history\n")
+    print(f"Scanned {len(blobs)} `.env` blob(s) in history "
+          f"+ {len(pinned)} pinned hash(es) from {PINNED_PATH.name}\n")
     label = {
         "EXPOSED": "[!] EXPOSED  - leaked value STILL IN USE, rotate now",
         "rotated": "[ok] rotated  - live value differs from the leaked one",

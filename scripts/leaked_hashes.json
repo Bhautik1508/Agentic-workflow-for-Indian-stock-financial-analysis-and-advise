@@ -1,0 +1,12 @@
+{
+  "_comment": "SHA-256 prefixes of secrets that reached public git history via backend/.env (commit 62927b7, deleted 9f68825). Hashes are one-way and safe to commit. Pinned here because scripts/purge-history.sh removed the blob, which would otherwise leave audit_secrets.py unable to prove rotation happened.",
+  "_source_blobs": [
+    "ed7c4773677005a27a10db7e80c43ad85faf70f2"
+  ],
+  "_recorded": "2026-09-14",
+  "hashes": {
+    "ALPHA_VANTAGE_KEY": "eece223b2293",
+    "GOOGLE_API_KEY": "dfc2ecfd5e34",
+    "GROQ_API_KEY": "68f9e37be8e7"
+  }
+}
