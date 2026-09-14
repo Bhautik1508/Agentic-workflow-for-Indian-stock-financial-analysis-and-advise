@@ -310,11 +310,19 @@ def _int_env(name: str, default: int) -> int:
 # `gemini-3.6-flash` and `gemini-3.5-flash` both measured 3/3 at ~3.7s;
 # `gemini-3.5-flash-lite` 3/3 at ~1.0s but far terser output.
 #
-# So: a reliable current model as primary, and a DIFFERENT, faster Gemini model
-# as the in-provider fallback. Retrying one model does nothing against a 503 on
-# that model's capacity pool — a different model is a different pool.
-DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
-DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.5-flash-lite"
+# So: a reliable model as primary, and a DIFFERENT Gemini model as the
+# in-provider fallback. Retrying one model does nothing against a 503 or a
+# per-model quota — a different model is a different bucket.
+#
+# flash-lite leads on measured production evidence. Free-tier rate limits are
+# per model, and six agents firing at once blow gemini-3.6-flash's RPM
+# instantly: a real run recorded 429 "exceeded your current quota" on every
+# single 3.6-flash call, with flash-lite then serving all six. Putting the
+# model that actually answers first removes a guaranteed wasted round-trip per
+# agent; 3.6-flash stays as the fallback so it is still used whenever it has
+# headroom.
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.6-flash"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_GROQ_FALLBACK_MODEL = "openai/gpt-oss-20b"
 

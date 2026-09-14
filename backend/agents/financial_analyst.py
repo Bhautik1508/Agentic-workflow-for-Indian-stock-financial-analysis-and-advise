@@ -1,5 +1,5 @@
 import json
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 FINANCIAL_SYSTEM_PROMPT = """You are a Senior Equity Research Analyst at a top-tier Indian brokerage with 15+ years
@@ -321,10 +321,10 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         business_summary=fundamental.get("business_summary", "No description available."),
         next_earnings_date=earnings.get("next_earnings_date", "Unknown"),
         days_to_earnings=earnings.get("days_to_earnings", "unknown"),
-        earnings_proximity_risk=earnings.get("earnings_proximity_risk", "unknown").upper(),
+        earnings_proximity_risk=str_field(earnings, "earnings_proximity_risk", "unknown").upper(),
         surprises_str=", ".join([f"{s:+.2f}%" for s in earnings.get("earnings_surprises_last_4q", [])]) or "No data",
         avg_surprise=earnings.get("avg_earnings_surprise") if earnings.get("avg_earnings_surprise") is not None else "N/A",
-        beat_miss_trend=earnings.get("beat_miss_trend", "unknown").replace("_", " ").upper(),
+        beat_miss_trend=str_field(earnings, "beat_miss_trend", "unknown").replace("_", " ").upper(),
     )
     
     text = await call_llm_with_retry(

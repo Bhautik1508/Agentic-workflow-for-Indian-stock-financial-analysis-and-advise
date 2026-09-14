@@ -1,5 +1,5 @@
 import numpy as np
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 RISK_SYSTEM_PROMPT = """You are a Senior Risk Manager at a SEBI-registered Portfolio Management Service (PMS) firm
@@ -218,11 +218,11 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         current_ratio=format_metric(fundamental.get("current_ratio")),
         altman_z=format_metric(fundamental.get("altman_z_score")),
         vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
-        fear_level=market_breadth.get("fear_level", "normal").replace("_", " ").upper(),
+        fear_level=str_field(market_breadth, "fear_level", "normal").replace("_", " ").upper(),
         days_to_earnings=earnings.get("days_to_earnings", "unknown"),
-        earnings_proximity_risk=earnings.get("earnings_proximity_risk", "unknown").upper(),
+        earnings_proximity_risk=str_field(earnings, "earnings_proximity_risk", "unknown").upper(),
         surprises_str=", ".join([f"{s:+.2f}%" for s in earnings.get("earnings_surprises_last_4q", [])]) or "No data",
-        beat_miss_trend=earnings.get("beat_miss_trend", "unknown").replace("_", " ").upper(),
+        beat_miss_trend=str_field(earnings, "beat_miss_trend", "unknown").replace("_", " ").upper(),
         surveillance_status=nse.get("surveillance_flag", "None"),
         sector=fundamental.get("sector", "Unknown"),
         industry=fundamental.get("industry", "Unknown"),

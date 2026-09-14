@@ -1,4 +1,4 @@
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 MACRO_GOV_SYSTEM_PROMPT = """You are a dual-specialist analyst combining:
@@ -158,7 +158,7 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
     nse = state.get("nse_data", {})
     inst = state.get("institutional_data", {})
     market_breadth = state.get("market_breadth", {})
-    sector = fundamental.get("sector", "Unknown").lower()
+    sector = str_field(fundamental, "sector", "Unknown").lower()
     
     # Format lists to text
     gdp_hist = "\n".join([f"{y}: {v}%" for y, v in macro.get("gdp_growth_pct", [])]) or "Unavailable"
@@ -213,9 +213,9 @@ async def run_macro_governance_analysis(state: StockAnalysisState) -> AgentRepor
         repo_rate=macro.get("repo_rate", 6.50),
         last_rate_change=macro.get("last_change", "N/A"),
         rbi_stance=macro.get("stance", "N/A"),
-        market_regime=market_breadth.get("market_regime", "neutral").upper(),
+        market_regime=str_field(market_breadth, "market_regime", "neutral").upper(),
         vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
-        fear_level=market_breadth.get("fear_level", "normal").replace("_", " ").upper(),
+        fear_level=str_field(market_breadth, "fear_level", "normal").replace("_", " ").upper(),
         usdinr_current=format_metric(usdinr.get("current")),
         usdinr_1m_change=format_metric(usdinr.get("1m_change")),
         crude_current=format_metric(crude.get("current")),

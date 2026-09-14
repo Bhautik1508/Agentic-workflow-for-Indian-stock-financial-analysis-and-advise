@@ -1,4 +1,4 @@
-from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry
+from agents.base_agent import get_llm, parse_llm_json, agent_with_fallback, call_llm_with_retry, str_field
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 TECHNICAL_SYSTEM_PROMPT = """You are a Chartered Market Technician (CMT) and head of technical research at a leading
@@ -202,13 +202,13 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         sma_200=format_metric(ta_data.get("sma_200")),
         above_below_sma200="ABOVE" if ta_data.get("above_sma_200") else "BELOW",
         ema_21=format_metric(ta_data.get("ema_21")),
-        ma_trend=ta_data.get("ma_trend", "mixed").replace("_", " ").title(),
+        ma_trend=str_field(ta_data, "ma_trend", "mixed").replace("_", " ").title(),
         golden_cross="YES" if ta_data.get("golden_cross") else "NO",
         adx=format_metric(ta_data.get("adx")),
-        trend_strength=ta_data.get("trend_strength", "weak").upper(),
+        trend_strength=str_field(ta_data, "trend_strength", "weak").upper(),
         adx_plus_di=format_metric(ta_data.get("adx_plus_di")),
         adx_minus_di=format_metric(ta_data.get("adx_minus_di")),
-        trend_direction=ta_data.get("trend_direction", "neutral").upper(),
+        trend_direction=str_field(ta_data, "trend_direction", "neutral").upper(),
         rsi_14=format_metric(rsi),
         rsi_interpretation=rsi_interp.upper(),
         rsi_9=format_metric(ta_data.get("rsi_9")),
@@ -226,7 +226,7 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         bb_pct_b_pct=format_metric((ta_data.get("bb_pct_b") or 0) * 100),
         bb_width=format_metric(ta_data.get("bb_width")),
         bb_squeeze=bb_squeeze.upper(),
-        bb_position=ta_data.get("bb_position", "inside").replace("_", " ").upper(),
+        bb_position=str_field(ta_data, "bb_position", "inside").replace("_", " ").upper(),
         atr_14=format_metric(ta_data.get("atr_14")),
         volume_today=ta_data.get("volume_today", 0),
         volume_sma_20=ta_data.get("volume_sma_20", 0),
@@ -247,17 +247,17 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         fib_618=format_metric(fib.get("fib_618")),
         fib_786=format_metric(fib.get("fib_786")),
         fib_100=format_metric(fib.get("fib_100")),
-        market_regime=market_breadth.get("market_regime", "neutral").upper(),
+        market_regime=str_field(market_breadth, "market_regime", "neutral").upper(),
         vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
-        fear_level=market_breadth.get("fear_level", "normal").replace("_", " ").upper(),
+        fear_level=str_field(market_breadth, "fear_level", "normal").replace("_", " ").upper(),
         nifty50_1m_change=format_metric(market_breadth.get("nifty50", {}).get("1m_change")),
         nifty_bank_1m_change=format_metric(market_breadth.get("nifty_bank", {}).get("1m_change")),
         pcr=format_metric(options_data.get("pcr")),
-        pcr_signal=options_data.get("pcr_signal", "unavailable").upper(),
+        pcr_signal=str_field(options_data, "pcr_signal", "unavailable").upper(),
         max_call_oi_strike=format_metric(options_data.get("max_call_oi_strike")),
         max_put_oi_strike=format_metric(options_data.get("max_put_oi_strike")),
         atm_iv=format_metric(options_data.get("atm_iv")),
-        iv_signal=options_data.get("iv_signal", "unknown").upper()
+        iv_signal=str_field(options_data, "iv_signal", "unknown").upper()
     )
     
     text = await call_llm_with_retry(

@@ -50,6 +50,25 @@ async def call_llm_with_retry(
         fallback_model=fallback_model,
     )
 
+def str_field(data, key: str, default: str = "unknown") -> str:
+    """Return a string for `key`, substituting `default` for missing OR None.
+
+    `dict.get(key, default)` returns the default only when the key is ABSENT.
+    Upstream payloads — yfinance especially — routinely include the key with an
+    explicit None, which then dies on `.lower()` / `.upper()` / `.replace()`.
+
+    This is not hypothetical: `fundamental.get("sector", "Unknown").lower()`
+    crashed the Macro & Governance analyst on *every* production run, because
+    yfinance is rate-limited from Render's IPs and returns sector=None. The
+    agent degraded to a null score on each analysis and the judge lost a whole
+    pillar, silently.
+    """
+    value = data.get(key) if isinstance(data, dict) else None
+    if value is None:
+        return default
+    return str(value)
+
+
 def parse_llm_json(response_content: str) -> dict:
     """Robustly parse JSON from LLM response, handling markdown fences."""
     content = response_content.strip()
