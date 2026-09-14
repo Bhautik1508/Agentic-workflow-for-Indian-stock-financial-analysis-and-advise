@@ -7,6 +7,9 @@ onto one `complete()` coroutine, so the router is vendor-agnostic.
 the runner sets at the start of each analysis, so we get a per-run breakdown
 of model usage / latency / cost without threading state through every agent.
 
+`health.py` probes each provider (and optionally sends a real completion) so a
+retired model surfaces as a red health check instead of a silent outage.
+
 `router.py` walks an ordered chain of (provider, model) attempts — Gemini
 primary, Groq fallback by default — and returns the first success, recording
 telemetry for every attempt along the way.
@@ -32,6 +35,7 @@ from .providers import (
     OpenAICompatProvider,
     build_default_chain,
 )
+from .health import ProviderHealth, check_live, check_providers, full_report
 from .router import call_llm
 
 __all__ = [
@@ -47,4 +51,8 @@ __all__ = [
     "OpenAICompatProvider",
     "build_default_chain",
     "call_llm",
+    "ProviderHealth",
+    "check_providers",
+    "check_live",
+    "full_report",
 ]

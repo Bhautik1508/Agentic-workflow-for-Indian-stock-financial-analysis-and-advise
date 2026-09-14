@@ -11,14 +11,30 @@ from agents.judge_analyst import run_judge_analyst
 
 logger = logging.getLogger(__name__)
 
-# Bound concurrent LLM calls so we stay under Groq TPM limits without serializing.
-# Each agent call still has its own 429 retry+fallback inside call_llm_with_retry.
+# Bound concurrent LLM calls so we stay under provider rate limits without
+# serialising. Each agent call still has its own retry + cross-provider
+# failover inside call_llm_with_retry.
 ANALYST_CONCURRENCY = 3
-_analyst_semaphore = asyncio.Semaphore(ANALYST_CONCURRENCY)
+_analyst_semaphore = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """Build the semaphore lazily, inside the running loop.
+
+    A module-level `asyncio.Semaphore()` binds the loop that happened to exist
+    at import time on Python 3.9, then throws `got Future attached to a
+    different loop` as soon as more than ANALYST_CONCURRENCY analysts contend —
+    which is always, with five. Production pins 3.11 where construction is
+    lazy anyway, so this was invisible there and fatal locally.
+    """
+    global _analyst_semaphore
+    if _analyst_semaphore is None:
+        _analyst_semaphore = asyncio.Semaphore(ANALYST_CONCURRENCY)
+    return _analyst_semaphore
 
 
 async def _run_under_semaphore(agent_name: str, coro):
-    async with _analyst_semaphore:
+    async with _get_semaphore():
         try:
             return await coro
         except Exception as e:

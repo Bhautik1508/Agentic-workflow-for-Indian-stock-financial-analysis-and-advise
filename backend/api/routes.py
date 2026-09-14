@@ -34,13 +34,36 @@ async def get_frozen_verdict(run_id: str):
 
 
 @router.get("/health")
-async def health_check():
-    """Health check endpoint used by Render and monitoring tools."""
-    return {
+async def health_check(deep: bool = False, live: bool = False, models: bool = False):
+    """Health check for Render and monitoring tools.
+
+    Shallow by default — Render polls this and must not pay for network calls
+    to two LLM vendors on every probe.
+
+      ?deep=true    also probe each provider and verify the configured model IDs
+      ?live=true    additionally send a real completion through the router
+      ?models=true  include each provider's full model list (verbose)
+
+    `deep` only proves a model is *listed*. Deprecated models stay visible to
+    the listing API while 404-ing on use — that gap once reported
+    `gemini-2.5-flash` healthy while every real call failed. Use `live` to
+    actually exercise the pipeline.
+    """
+    payload = {
         "status": "ok",
         "version": "1.0.2-yfinance-fix",
         "environment": "production" if os.getenv("RENDER") else "development",
     }
+
+    if not (deep or live):
+        return payload
+
+    from llm import full_report
+
+    report = await full_report(live=live, include_model_list=models)
+    payload["llm"] = report
+    payload["status"] = "ok" if report.get("healthy") else "degraded"
+    return payload
 
 JUDGE_FIELDS = (
     "final_decision",
@@ -294,10 +317,6 @@ async def get_price_history(ticker: str, period: str = "1y"):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/health")
-async def health():
-    return {"status": "ok", "message": "Backend is running"}
 
 @router.get("/debug/data")
 async def debug_data_fetch(ticker: str = "TCS.NS"):
