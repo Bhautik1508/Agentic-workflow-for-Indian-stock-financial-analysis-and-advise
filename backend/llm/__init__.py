@@ -35,6 +35,7 @@ from .providers import (
     OpenAICompatProvider,
     build_default_chain,
 )
+from .pricing import ModelPrice, estimate_cost, price_for, pricing_table
 from .health import ProviderHealth, check_live, check_providers, full_report
 from .router import call_llm
 
@@ -51,6 +52,10 @@ __all__ = [
     "OpenAICompatProvider",
     "build_default_chain",
     "call_llm",
+    "ModelPrice",
+    "estimate_cost",
+    "price_for",
+    "pricing_table",
     "ProviderHealth",
     "check_providers",
     "check_live",

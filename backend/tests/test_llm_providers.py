@@ -258,14 +258,18 @@ class _StubProvider:
         self.error = error or RuntimeError("boom")
         self.calls: List[str] = []
         self.schemas: List[Any] = []
+        self.kwargs: List[Dict[str, Any]] = []
 
     def is_configured(self):
         return True
 
-    async def complete(self, messages, *, model, temperature=0.1, json_mode=True,
-                       max_output_tokens=None, response_schema=None):
+    async def complete(self, messages, *, model, response_schema=None, **kwargs):
+        # **kwargs on purpose: the provider protocol gains optional keywords
+        # (response_schema, thinking_budget, ...) and a stub that enumerates
+        # them breaks every test on each addition without catching a real bug.
         self.calls.append(model)
         self.schemas.append(response_schema)
+        self.kwargs.append(kwargs)
         if self.fail_times > 0:
             self.fail_times -= 1
             raise self.error

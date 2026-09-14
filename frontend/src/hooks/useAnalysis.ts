@@ -96,6 +96,27 @@ export interface FinalDecision {
     counter_factual?: CounterFactual | null;
 }
 
+/** Per-run LLM telemetry, emitted by the backend's `telemetry` SSE event. */
+export interface RunTelemetry {
+    total_calls: number;
+    total_tokens: number;
+    fallback_calls: number;
+    failed_calls: number;
+    /** null when no model in the chain has a configured price. */
+    estimated_cost_usd: number | null;
+    pricing_configured: boolean;
+    unpriced_calls: number;
+    primary_success_rate: number | null;
+    by_provider: Record<string, {
+        calls: number; successes: number; failures: number;
+        tokens: number; duration_ms: number; cost_usd?: number;
+    }>;
+    latency: {
+        overall: { p50: number; p95: number; max: number };
+        by_agent: Record<string, { p50: number; p95: number; max: number; calls: number }>;
+    };
+}
+
 export interface AnalysisState {
     status: 'idle' | 'initializing' | 'analyzing' | 'complete' | 'error';
     message: string;
@@ -105,6 +126,7 @@ export interface AnalysisState {
     // Resolved exchange ticker (e.g. "RELIANCE.NS"). Populated once the
     // backend emits the `start` event.
     ticker: string | null;
+    telemetry: RunTelemetry | null;
 }
 
 // ─────────────────────────────────────────────
@@ -166,6 +188,7 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
         final_decision: null,
         run_id: null,
         ticker: null,
+    telemetry: null,
     });
 
     const savedToHistory = useRef(false);
@@ -196,6 +219,7 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
             final_decision: null,
             run_id: null,
             ticker: null,
+    telemetry: null,
         });
 
         const API_BASE_URL = getApiUrl();
@@ -326,6 +350,14 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
             });
 
             eventSource.close();
+        });
+
+        // ── telemetry (cost / latency / which provider served) ──
+        eventSource.addEventListener('telemetry', (e) => {
+            try {
+                const data = JSON.parse((e as MessageEvent).data) as RunTelemetry;
+                setState((prev) => ({ ...prev, telemetry: data }));
+            } catch { /* telemetry is informational; never break the run for it */ }
         });
 
         // ── error (named SSE event) ────────────

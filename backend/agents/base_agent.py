@@ -37,6 +37,7 @@ async def call_llm_with_retry(
     *,
     agent: str = "unknown",
     response_schema=None,
+    thinking_budget=None,
 ):
     """Thin wrapper that routes through `llm.router.call_llm` so every call is
     recorded in the per-run telemetry contextvar.
@@ -53,6 +54,7 @@ async def call_llm_with_retry(
         primary_model=primary_model,
         fallback_model=fallback_model,
         response_schema=response_schema,
+        thinking_budget=thinking_budget,
     )
 
 

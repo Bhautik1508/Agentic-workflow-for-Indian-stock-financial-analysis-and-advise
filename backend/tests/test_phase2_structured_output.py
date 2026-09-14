@@ -254,3 +254,19 @@ def test_financial_agent_no_longer_dumps_the_whole_screener_payload():
     source = (AGENTS_DIR / "financial_analyst.py").read_text()
     assert "json.dumps(screener" not in source
     assert "summarize_screener(" in source
+
+
+def test_provider_protocol_accepts_the_router_keywords():
+    """The router calls complete() with every optional keyword; a provider that
+    omits one fails at runtime, not at import. Checked by signature so the stub
+    in test_llm_providers.py cannot mask a real omission."""
+    import inspect
+
+    from llm.providers import GeminiProvider, OpenAICompatProvider
+
+    required = {"model", "temperature", "json_mode", "max_output_tokens",
+                "response_schema", "thinking_budget"}
+    for provider in (GeminiProvider, OpenAICompatProvider):
+        params = set(inspect.signature(provider.complete).parameters)
+        missing = required - params
+        assert not missing, f"{provider.__name__}.complete is missing {sorted(missing)}"

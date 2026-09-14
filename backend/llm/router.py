@@ -139,6 +139,7 @@ async def call_llm(
     temperature: float = 0.1,
     max_output_tokens: Optional[int] = None,
     response_schema: Optional[Any] = None,
+    thinking_budget: Optional[int] = None,
 ) -> str:
     """Single entry point for LLM calls.
 
@@ -173,6 +174,7 @@ async def call_llm(
                 json_mode=json_mode,
                 max_output_tokens=max_output_tokens,
                 response_schema=response_schema,
+                thinking_budget=thinking_budget,
             )
             if telemetry is not None:
                 telemetry.record(LLMCallRecord(

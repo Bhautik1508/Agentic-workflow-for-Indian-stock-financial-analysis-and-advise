@@ -10,6 +10,7 @@ import { ScoreBreakdown } from '@/components/analysis/ScoreBreakdown';
 import { ComparisonRow } from '@/components/analysis/ComparisonRow';
 import { CounterFactualPanel } from '@/components/analysis/CounterFactualPanel';
 import { Disclaimer } from '@/components/analysis/Disclaimer';
+import { RunStats } from '@/components/analysis/RunStats';
 import { HistorySidebar } from '@/components/HistorySidebar';
 import { WatchToggle } from '@/components/analysis/WatchToggle';
 import { ShareButton } from '@/components/analysis/ShareButton';
@@ -157,6 +158,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                         })}
                     </div>
                 </section>
+
+                <RunStats telemetry={state.telemetry} />
 
                 <Disclaimer />
             </div>

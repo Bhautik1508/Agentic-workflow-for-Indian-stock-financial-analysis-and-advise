@@ -8,6 +8,17 @@ from scoring import (
     compute_counter_factual,
 )
 
+import os
+
+# Reasoning budget for the judge only. 0 disables where the model allows it;
+# Gemini 3.x rejects 0, so leave it unset there. Env-tunable because the right
+# value depends on the model in the primary slot.
+JUDGE_THINKING_BUDGET = (
+    int(os.environ["JUDGE_THINKING_BUDGET"])
+    if (os.environ.get("JUDGE_THINKING_BUDGET") or "").strip().lstrip("-").isdigit()
+    else None
+)
+
 # Default ("balanced") weights — used when no profile is specified.
 JUDGE_WEIGHTS = {
     "financial":   0.30,
@@ -288,6 +299,10 @@ async def run_judge_analyst(state: StockAnalysisState) -> AgentReport:
         ],
         agent="Judge Analyst",
         response_schema=JudgeVerdict,
+        # The judge synthesises five reports into one call; it is the only step
+        # where reasoning tokens plausibly pay for themselves. Analysts extract
+        # from fully-supplied context, so they stay at the model default.
+        thinking_budget=JUDGE_THINKING_BUDGET,
     )
 
     result = parse_and_validate(text, JudgeVerdict, "Judge Analyst")

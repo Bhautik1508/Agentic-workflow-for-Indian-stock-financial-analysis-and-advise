@@ -55,6 +55,7 @@ class LLMProvider(Protocol):
         json_mode: bool = True,
         max_output_tokens: Optional[int] = None,
         response_schema: Optional[Any] = None,
+        thinking_budget: Optional[int] = None,
     ) -> CompletionResult:
         ...
 
@@ -113,6 +114,7 @@ class GeminiProvider:
         json_mode: bool = True,
         max_output_tokens: Optional[int] = None,
         response_schema: Optional[Any] = None,
+        thinking_budget: Optional[int] = None,
     ) -> CompletionResult:
         from google.genai import types
 
@@ -141,11 +143,17 @@ class GeminiProvider:
             config_kwargs["max_output_tokens"] = max_output_tokens
 
         # Opt-in only — see the class docstring for why this is not defaulted.
-        thinking_budget = os.environ.get("GEMINI_THINKING_BUDGET", "").strip()
-        if thinking_budget:
+        # A per-call budget wins over the global one: the judge synthesises
+        # rather than extracts, so it is the one call where deliberation
+        # plausibly pays for itself.
+        budget: Optional[str] = (
+            str(thinking_budget) if thinking_budget is not None
+            else os.environ.get("GEMINI_THINKING_BUDGET", "").strip()
+        )
+        if budget:
             try:
                 config_kwargs["thinking_config"] = types.ThinkingConfig(
-                    thinking_budget=int(thinking_budget)
+                    thinking_budget=int(budget)
                 )
             except (TypeError, ValueError):
                 pass  # unparseable budget: fall back to the model's own default
@@ -303,8 +311,9 @@ class OpenAICompatProvider:
         json_mode: bool = True,
         max_output_tokens: Optional[int] = None,
         response_schema: Optional[Any] = None,
+        thinking_budget: Optional[int] = None,
     ) -> CompletionResult:
-        # `response_schema` is accepted and ignored: this tier guarantees valid
+        # `response_schema` and `thinking_budget` are accepted and ignored: this tier guarantees valid
         # JSON, not the right shape. Callers validate the result regardless.
         kwargs: Dict[str, Any] = {
             "model": model,

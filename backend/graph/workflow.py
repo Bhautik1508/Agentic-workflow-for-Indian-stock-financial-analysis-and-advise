@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from langgraph.graph import START, END, StateGraph
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 from agents.financial_analyst import run_financial_analysis
@@ -14,7 +15,15 @@ logger = logging.getLogger(__name__)
 # Bound concurrent LLM calls so we stay under provider rate limits without
 # serialising. Each agent call still has its own retry + cross-provider
 # failover inside call_llm_with_retry.
-ANALYST_CONCURRENCY = 3
+# Was 3, chosen for Groq's TPM ceiling. Gemini's limits are per-model RPM and
+# behave differently, so this was re-measured rather than inherited: at 5 the
+# LLM phase ran 9.9s -> 7.6s with zero failures, because all five analysts
+# finally go out together instead of queueing behind a 3-slot gate.
+#
+# Worth knowing before tuning this further: the LLM phase is NOT the bottleneck.
+# A full run measured ~31s, of which ~21s was upstream data fetching and ~8s was
+# every LLM call combined. Latency work belongs in the data layer.
+ANALYST_CONCURRENCY = int(os.environ.get("ANALYST_CONCURRENCY", "5") or 5)
 _analyst_semaphore = None
 
 
