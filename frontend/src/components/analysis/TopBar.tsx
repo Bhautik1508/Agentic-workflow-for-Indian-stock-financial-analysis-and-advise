@@ -26,7 +26,9 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
         async function fetchPrice() {
             try {
                 const API_BASE_URL = getApiUrl();
-                const res = await fetch(`${API_BASE_URL}/api/price-history/${ticker}?period=5d`);
+                const res = await fetch(
+                    `${API_BASE_URL}/api/price-history/${encodeURIComponent(ticker)}?period=5d`,
+                );
                 const data = await res.json();
                 if (data.data && data.data.length >= 2) {
                     const latest = data.data[data.data.length - 1];
@@ -47,7 +49,7 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
         if (ticker) fetchPrice();
     }, [ticker]);
 
-    const decodedTicker = decodeURIComponent(ticker);
+    const decodedTicker = ticker;   // already decoded by the page
     const isPositive = price ? price.change >= 0 : true;
     const changeColor = isPositive ? 'text-[#15803D]' : 'text-[#B91C1C]';
     const arrow = isPositive ? '▲' : '▼';

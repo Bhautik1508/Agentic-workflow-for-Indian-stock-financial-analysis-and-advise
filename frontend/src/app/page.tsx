@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import SearchBar from '@/components/SearchBar';
 import { Watchlist } from '@/components/Watchlist';
 import { useRouter } from 'next/navigation';
+import { toRouteTicker } from '@/lib/route';
 
 const QUICK_STOCKS = [
     { name: 'Reliance',     ticker: 'RELIANCE.NS' },
@@ -79,7 +80,10 @@ export default function Home() {
                 {QUICK_STOCKS.map((s) => (
                     <button
                         key={s.ticker}
-                        onClick={() => router.push(`/analyze/${encodeURIComponent(s.name)}`)}
+                        // Navigate by ticker, not display name: a name with a space
+                        // ("HDFC Bank") round-trips through the route param and ends up
+                        // double-encoded. SearchBar already navigates by symbol.
+                        onClick={() => router.push(`/analyze/${encodeURIComponent(toRouteTicker(s.ticker))}`)}
                         className="px-2.5 py-1 text-[12px] rounded-full border border-[#E5E3DB] bg-white text-[#4A4D55] hover:border-[#1E40AF]/40 hover:text-[#1E40AF] transition cursor-pointer"
                     >
                         {s.name}

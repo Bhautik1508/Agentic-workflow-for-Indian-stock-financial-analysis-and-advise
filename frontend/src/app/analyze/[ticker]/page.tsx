@@ -3,6 +3,7 @@
 import { useAnalysis, type RiskProfile } from '@/hooks/useAnalysis';
 import { use, useState } from 'react';
 import { TopBar } from '@/components/analysis/TopBar';
+import { decodeRouteParam } from '@/lib/route';
 import { PriceChart } from '@/components/analysis/PriceChart';
 import { AnalystCard } from '@/components/analysis/AnalystCard';
 import { VerdictHero } from '@/components/analysis/VerdictHero';
@@ -32,11 +33,14 @@ const PROFILE_OPTIONS: { value: RiskProfile; label: string; tagline: string }[] 
 
 export default function AnalyzePage({ params }: { params: Promise<{ ticker: string }> }) {
     const unwrappedParams = use(params);
-    const ticker = unwrappedParams.ticker;
+    // Next.js gives back the RAW segment. Decode once here: useAnalysis
+    // re-encodes when building the API URL, so passing the raw value double-
+    // encoded it and the API received the literal text "HDFC%20Bank".
+    const ticker = decodeRouteParam(unwrappedParams.ticker);
     const [profile, setProfile] = useState<RiskProfile>('balanced');
     const state = useAnalysis(ticker, profile);
 
-    const decodedName = decodeURIComponent(ticker);
+    const decodedName = ticker;
     const isComplete = state.status === 'complete';
     const isAnalyzing = state.status === 'analyzing';
 
