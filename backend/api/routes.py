@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
-from api.security import enforce_analyze_rate_limit, require_debug_access
+from api.security import check_analyze_rate_limit, require_debug_access
 from graph.runner import run_stock_analysis
 
 logger = logging.getLogger(__name__)
@@ -111,14 +111,27 @@ JUDGE_FIELDS = (
 )
 
 
-@router.get("/analyze/{company_name}", dependencies=[Depends(enforce_analyze_rate_limit)])
-async def analyze_stock(company_name: str, profile: str = "balanced"):
+@router.get("/analyze/{company_name}")
+async def analyze_stock(request: Request, company_name: str, profile: str = "balanced"):
     """Main analysis endpoint — returns SSE stream of agent results.
 
     `profile` is one of conservative|balanced|aggressive (default: balanced)."""
 
+    # Checked here rather than as a dependency: EventSource cannot read the body
+    # of a 429, so an HTTP-level rejection reaches the browser as an opaque
+    # error and the user sees "Analysis Failed" with no reason. Reported through
+    # the stream instead, the way data-quality aborts already are.
+    rate_limited = check_analyze_rate_limit(request)
+
     async def event_generator():
         import time
+
+        if rate_limited is not None:
+            message, retry_after = rate_limited
+            yield {"event": "error", "data": json.dumps(
+                {"detail": message, "retry_after": retry_after, "rate_limited": True})}
+            return
+
         from data.market_data import resolve_ticker
         from data.cache import get_cached_analysis, save_analysis_to_cache
         from graph.run_log import new_run_id, write_run_log

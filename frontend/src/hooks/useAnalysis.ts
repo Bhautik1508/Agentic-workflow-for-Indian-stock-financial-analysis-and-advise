@@ -366,6 +366,11 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
             try {
                 const msg = JSON.parse((e as MessageEvent).data);
                 errorMessage = msg.detail ?? errorMessage;
+                // Rate limiting is self-inflicted and self-resolving, so say so
+                // plainly rather than letting it read as a broken analysis.
+                if (msg.rate_limited) {
+                    errorMessage = msg.detail;
+                }
             } catch { /* no data on connection errors */ }
 
             setState((prev) => ({ ...prev, status: 'error', message: errorMessage }));

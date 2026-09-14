@@ -34,17 +34,41 @@ def client(monkeypatch):
     security.reset_rate_limits()
 
 
-def test_rate_limit_blocks_after_the_burst_allowance(monkeypatch, client):
+def _rate_limit_event(client, ip: str):
+    """Return the parsed SSE error payload if the run was rate limited."""
+    import json as _json
+
+    body = client.get("/api/analyze/NOSUCHTICKERXYZ",
+                      headers={"x-forwarded-for": ip}).text
+    for line in body.splitlines():
+        if line.startswith("data: "):
+            try:
+                payload = _json.loads(line[6:])
+            except ValueError:
+                continue
+            if payload.get("rate_limited"):
+                return payload
+    return None
+
+
+def test_rate_limit_is_reported_through_the_stream(monkeypatch, client):
+    """EventSource cannot read the body of a 429, so an HTTP-level rejection
+    reaches the browser as an opaque error and the user sees "Analysis Failed"
+    with no reason. The limit must arrive as an SSE error event instead."""
     import api.security as security
 
     monkeypatch.setattr(security, "ANALYZE_BURST_LIMIT", 2)
     monkeypatch.setattr(security, "RATE_LIMIT_ENABLED", True)
     security.reset_rate_limits()
 
-    headers = {"x-forwarded-for": "203.0.113.5"}
-    codes = [client.get("/api/analyze/NOSUCHTICKERXYZ", headers=headers).status_code
-             for _ in range(3)]
-    assert codes[-1] == 429, f"expected a 429 after 2 calls, got {codes}"
+    ip = "203.0.113.5"
+    assert _rate_limit_event(client, ip) is None
+    assert _rate_limit_event(client, ip) is None
+    payload = _rate_limit_event(client, ip)
+
+    assert payload is not None, "third call should have been rate limited"
+    assert payload["retry_after"] > 0
+    assert "try again" in payload["detail"].lower()
 
 
 def test_rate_limit_is_per_client(monkeypatch, client):
@@ -54,24 +78,27 @@ def test_rate_limit_is_per_client(monkeypatch, client):
     monkeypatch.setattr(security, "RATE_LIMIT_ENABLED", True)
     security.reset_rate_limits()
 
-    client.get("/api/analyze/NOSUCHTICKERXYZ", headers={"x-forwarded-for": "198.51.100.1"})
-    blocked = client.get("/api/analyze/NOSUCHTICKERXYZ", headers={"x-forwarded-for": "198.51.100.1"})
-    other = client.get("/api/analyze/NOSUCHTICKERXYZ", headers={"x-forwarded-for": "198.51.100.2"})
-    assert blocked.status_code == 429
-    assert other.status_code != 429
+    _rate_limit_event(client, "198.51.100.1")
+    assert _rate_limit_event(client, "198.51.100.1") is not None
+    assert _rate_limit_event(client, "198.51.100.2") is None, "other clients unaffected"
 
 
-def test_rate_limit_response_carries_retry_after(monkeypatch, client):
+def test_default_limits_allow_ordinary_interactive_use():
+    """The first values (5 per 5 min) blocked a person analysing two stocks in a
+    row, and because the limit is per-IP it looked ticker-specific."""
     import api.security as security
 
-    monkeypatch.setattr(security, "ANALYZE_BURST_LIMIT", 1)
-    monkeypatch.setattr(security, "RATE_LIMIT_ENABLED", True)
-    security.reset_rate_limits()
+    assert security.ANALYZE_BURST_LIMIT >= 15
+    assert security.ANALYZE_DAILY_LIMIT >= 100
 
-    headers = {"x-forwarded-for": "203.0.113.9"}
-    client.get("/api/analyze/NOSUCHTICKERXYZ", headers=headers)
-    blocked = client.get("/api/analyze/NOSUCHTICKERXYZ", headers=headers)
-    assert blocked.headers.get("retry-after")
+
+def test_rate_limit_can_be_disabled(monkeypatch, client):
+    import api.security as security
+
+    monkeypatch.setattr(security, "RATE_LIMIT_ENABLED", False)
+    security.reset_rate_limits()
+    for _ in range(3):
+        assert _rate_limit_event(client, "203.0.113.77") is None
 
 
 def test_client_key_prefers_the_forwarded_header():

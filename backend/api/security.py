@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
-from typing import Deque, Dict, Tuple
+from typing import Deque, Dict, Optional, Tuple
 
 from fastapi import HTTPException, Request
 
@@ -31,9 +31,18 @@ def _int_env(name: str, default: int) -> int:
 
 
 # Two windows: a short one to stop bursts, a long one to cap daily spend.
-ANALYZE_BURST_LIMIT = _int_env("ANALYZE_BURST_LIMIT", 5)
+#
+# The first values here (5 per 5 min) were set to protect the token budget and
+# were simply too tight for a person using their own app: analysing two stocks
+# in a row hit the cap. Because the limit is per-IP rather than per-ticker, it
+# also LOOKED ticker-specific -- "Wipro works, HDFC fails" was really "the
+# second request in five minutes fails".
+#
+# These bounds still stop a script draining the budget while leaving normal
+# interactive use alone.
+ANALYZE_BURST_LIMIT = _int_env("ANALYZE_BURST_LIMIT", 20)
 ANALYZE_BURST_WINDOW = _int_env("ANALYZE_BURST_WINDOW_SECONDS", 300)
-ANALYZE_DAILY_LIMIT = _int_env("ANALYZE_DAILY_LIMIT", 50)
+ANALYZE_DAILY_LIMIT = _int_env("ANALYZE_DAILY_LIMIT", 200)
 ANALYZE_DAILY_WINDOW = _int_env("ANALYZE_DAILY_WINDOW_SECONDS", 86400)
 
 RATE_LIMIT_ENABLED = (os.environ.get("RATE_LIMIT_ENABLED", "1") or "1").strip().lower() \
@@ -70,6 +79,49 @@ def _check(key: str, limit: int, window: int, now: float) -> Tuple[bool, int]:
         retry_after = int(window - (now - bucket[0])) + 1
         return False, max(1, retry_after)
     return True, 0
+
+
+def check_analyze_rate_limit(request: Request) -> Optional[Tuple[str, int]]:
+    """Non-raising variant for the SSE endpoint. Returns (message, retry_after)
+    when the caller is over the limit, else None.
+
+    The streaming endpoint needs this because **EventSource cannot read the body
+    of a non-200 response**. An HTTP 429 reaches the browser as an opaque
+    `onerror`, so the user sees "Analysis Failed" with no hint that they simply
+    need to wait 40 seconds. Reporting it *through* the stream, the way
+    data-quality aborts already are, makes the reason visible.
+    """
+    if not RATE_LIMIT_ENABLED:
+        return None
+    now = time.time()
+    key = client_key(request)
+    _evict_stale(now)
+
+    for limit, window, label in (
+        (ANALYZE_BURST_LIMIT, ANALYZE_BURST_WINDOW, "burst"),
+        (ANALYZE_DAILY_LIMIT, ANALYZE_DAILY_WINDOW, "daily"),
+    ):
+        allowed, retry_after = _check(f"{key}:{label}", limit, window, now)
+        if not allowed:
+            logger.warning(f"[rate-limit] {label} limit hit for {key}")
+            unit = "minutes" if window < 86400 else "hours"
+            amount = window // 60 if window < 86400 else window // 3600
+            return (
+                f"Rate limit reached: {limit} analyses per {amount} {unit}. "
+                f"Please try again in {retry_after} seconds.",
+                retry_after,
+            )
+
+    for label in ("burst", "daily"):
+        _hits[f"{key}:{label}"].append(now)
+    return None
+
+
+def _evict_stale(now: float) -> None:
+    if len(_hits) > _MAX_TRACKED_CLIENTS:
+        stale = [k for k, v in _hits.items() if not v or now - v[-1] > ANALYZE_DAILY_WINDOW]
+        for k in stale[: len(_hits) // 2 or 1]:
+            _hits.pop(k, None)
 
 
 def enforce_analyze_rate_limit(request: Request) -> None:
