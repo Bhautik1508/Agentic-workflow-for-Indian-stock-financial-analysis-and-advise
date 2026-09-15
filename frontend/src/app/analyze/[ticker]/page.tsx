@@ -12,6 +12,7 @@ import { ComparisonRow } from '@/components/analysis/ComparisonRow';
 import { CounterFactualPanel } from '@/components/analysis/CounterFactualPanel';
 import { Disclaimer } from '@/components/analysis/Disclaimer';
 import { RunStats } from '@/components/analysis/RunStats';
+import { QualityPanel } from '@/components/analysis/QualityPanel';
 import { HistorySidebar } from '@/components/HistorySidebar';
 import { WatchToggle } from '@/components/analysis/WatchToggle';
 import { ShareButton } from '@/components/analysis/ShareButton';
@@ -109,7 +110,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                 />
 
                 {/* ─── Comparison row ─── */}
-                <ComparisonRow agents={state.agents} />
+                <ComparisonRow agents={state.agents} relative={state.relative} />
 
                 {/* ─── Price chart with target/stop overlays ─── */}
                 <section className="mt-8">
@@ -162,6 +163,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                         })}
                     </div>
                 </section>
+
+                <QualityPanel quality={state.quality} extendedRisk={state.extendedRisk} />
 
                 <RunStats telemetry={state.telemetry} />
 

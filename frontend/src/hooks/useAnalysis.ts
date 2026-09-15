@@ -96,6 +96,89 @@ export interface FinalDecision {
     counter_factual?: CounterFactual | null;
 }
 
+/** Stock vs an index over one window. `excess_pct` is the number that matters:
+ *  it separates a company falling with its market from one falling on its own. */
+export interface RelativeWindow {
+    stock_pct: number | null;
+    benchmark_pct?: number | null;
+    sector_pct?: number | null;
+    excess_pct: number | null;
+}
+
+export interface IndexSummary {
+    symbol: string | null;
+    last: number | null;
+    change_pct_30d: number | null;
+    change_pct_365d: number | null;
+    pe: number | null;
+    pb: number | null;
+    dividend_yield: number | null;
+}
+
+export interface RelativeContext {
+    vs_benchmark: Record<string, RelativeWindow>;
+    benchmark_index: IndexSummary | Record<string, never>;
+    sector_index_symbol: string | null;
+    sector_index: IndexSummary | Record<string, never>;
+    vs_sector: Record<string, RelativeWindow>;
+    /** null when beta could not be measured — never computed against a fabricated 1.0. */
+    alpha_1y_pct: number | null;
+    volatility_regime: { india_vix: number | null; regime: string; note?: string };
+}
+
+export interface PiotroskiCriterion {
+    name: string;
+    /** null = not evaluable from the available statements, not "failed". */
+    passed: boolean | null;
+    detail: string;
+}
+
+export interface QualityMetrics {
+    piotroski: {
+        score: number | null;
+        max_score: number;
+        interpretation: string;
+        criteria: PiotroskiCriterion[];
+        unavailable: string[];
+    };
+    dupont: {
+        roe: number | null;
+        net_margin: number | null;
+        asset_turnover: number | null;
+        equity_multiplier: number | null;
+        driver: string | null;
+        reason?: string | null;
+    };
+    cash_quality: {
+        cash_conversion: number | null;
+        cash_conversion_3y_avg: number | null;
+        accruals_ratio: number | null;
+        flag: string | null;
+        reason?: string | null;
+    };
+}
+
+export interface ExtendedRisk {
+    sortino_ratio: number | null;
+    downside_deviation_pct: number | null;
+    calmar_ratio: number | null;
+    annual_return_pct: number | null;
+    rolling_beta: {
+        beta_1y: number | null;
+        beta_2y: number | null;
+        trend: string;
+        note?: string;
+    };
+    week52_percentile: number | null;
+    liquidity: {
+        median_daily_value_cr: number | null;
+        thin: boolean | null;
+        tier: string;
+        note?: string;
+    };
+    vwap_relative_pct: number | null;
+}
+
 /** Per-run LLM telemetry, emitted by the backend's `telemetry` SSE event. */
 export interface RunTelemetry {
     total_calls: number;
@@ -127,6 +210,9 @@ export interface AnalysisState {
     // backend emits the `start` event.
     ticker: string | null;
     telemetry: RunTelemetry | null;
+    relative: RelativeContext | null;
+    quality: QualityMetrics | null;
+    extendedRisk: ExtendedRisk | null;
 }
 
 // ─────────────────────────────────────────────
@@ -189,6 +275,9 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
         run_id: null,
         ticker: null,
     telemetry: null,
+    relative: null,
+    quality: null,
+    extendedRisk: null,
     });
 
     const savedToHistory = useRef(false);
@@ -220,6 +309,9 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
             run_id: null,
             ticker: null,
     telemetry: null,
+    relative: null,
+    quality: null,
+    extendedRisk: null,
         });
 
         const API_BASE_URL = getApiUrl();
@@ -282,6 +374,14 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
                     newAgents[mapped] = reportData as AgentReport;
                 }
             }
+            const analytics: Partial<AnalysisState> = {};
+            if (data.state?.relative_context) analytics.relative = data.state.relative_context;
+            if (data.state?.quality_metrics) analytics.quality = data.state.quality_metrics;
+            if (data.state?.extended_risk) analytics.extendedRisk = data.state.extended_risk;
+            if (Object.keys(analytics).length > 0) {
+                setState((prev) => ({ ...prev, ...analytics }));
+            }
+
             if (Object.keys(newAgents).length > 0) {
                 setState((prev) => ({
                     ...prev,
@@ -337,8 +437,13 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
                     }
                 }
 
+                const cachedAnalytics = data.analytics ?? {};
+
                 return {
                     ...prev,
+                    relative: cachedAnalytics.relative_context ?? prev.relative,
+                    quality: cachedAnalytics.quality_metrics ?? prev.quality,
+                    extendedRisk: cachedAnalytics.extended_risk ?? prev.extendedRisk,
                     status: 'complete',
                     message: data.message ?? 'Analysis complete',
                     // Cache hits ship the original run_id so /verdict/{id} can find the run log.

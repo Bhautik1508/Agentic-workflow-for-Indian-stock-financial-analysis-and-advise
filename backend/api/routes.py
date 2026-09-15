@@ -110,6 +110,17 @@ JUDGE_FIELDS = (
     "counter_factual",
 )
 
+# Analytics computed before the graph runs. They live on the state rather than
+# inside a report, so without this list the SSE filter drops them and the UI
+# never learns they exist — which is exactly what happened to Phases C, D and E.
+#
+# `indices` is deliberately NOT here: it is 139 NSE index records, useful to the
+# server and far too large to stream per node update.
+ANALYTICS_FIELDS = (
+    "relative_context",     # vs Nifty 50 and the sector index, CAPM alpha, India VIX
+    "quality_metrics",      # Piotroski, DuPont, cash conversion, accruals
+)
+
 
 @router.get("/analyze/{company_name}")
 async def analyze_stock(request: Request, company_name: str, profile: str = "balanced"):
@@ -143,6 +154,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
         ticker = None
         accumulated_reports: dict = {}
         judge_payload: dict = {}
+        analytics: dict = {}
         # Phase 3: harvested at the end of the run, written into cache + run log
         run_telemetry: dict = {}
         run_data_quality: dict = {}
@@ -179,10 +191,19 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                 if event["event"] == "node_update":
                     safe_state = {}
                     for k, v in event["state"].items():
-                        if k.endswith("_report") or k in JUDGE_FIELDS:
+                        if k.endswith("_report") or k in JUDGE_FIELDS or k in ANALYTICS_FIELDS:
                             safe_state[k] = v
                             if k.endswith("_report"):
                                 accumulated_reports[k] = v
+                            elif k in ANALYTICS_FIELDS:
+                                analytics[k] = v
+
+                    # The extended risk block is computed inside risk_data, which
+                    # is not streamed wholesale (it carries a full price series).
+                    risk_payload = event["state"].get("risk_data") or {}
+                    if risk_payload.get("extended_risk"):
+                        analytics["extended_risk"] = risk_payload["extended_risk"]
+                        safe_state["extended_risk"] = risk_payload["extended_risk"]
 
                     if event["node"] == "judge_node" and "final_decision" in event["state"]:
                         judge_payload = {f: event["state"].get(f) for f in JUDGE_FIELDS}
@@ -222,6 +243,8 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                 "message": "Analysis Finished",
                 "reports": accumulated_reports,
                 "judge_report": judge_payload,
+                # Included so a cache hit renders identically to a live run.
+                "analytics": analytics,
                 "run_id": run_id,
                 "ticker": ticker,
                 "risk_profile": profile_name,

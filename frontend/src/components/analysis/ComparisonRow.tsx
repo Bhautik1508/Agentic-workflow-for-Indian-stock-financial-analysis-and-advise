@@ -1,10 +1,13 @@
 'use client';
 
-import type { AgentReport } from '@/hooks/useAnalysis';
+import type { AgentReport, RelativeContext } from '@/hooks/useAnalysis';
 import { pct } from '@/lib/format';
 
 interface ComparisonRowProps {
     agents: Record<string, AgentReport | undefined>;
+    /** Index- and sector-relative performance. Optional so the component still
+     *  renders for a cached run that predates it. */
+    relative?: RelativeContext | null;
 }
 
 interface MetricCard {
@@ -15,8 +18,52 @@ interface MetricCard {
 }
 
 /** Walk available agent reports and pull comparable metrics into a small tile row. */
-export function ComparisonRow({ agents }: ComparisonRowProps) {
+export function ComparisonRow({ agents, relative }: ComparisonRowProps) {
     const cards: MetricCard[] = [];
+
+    // Relative performance leads: "down 8%" is not a verdict input, "down 8%
+    // while the sector is down 15%" is. Shown first because it is the question
+    // a reader asks before any ratio.
+    const vsIndex = relative?.vs_benchmark?.['1Y'];
+    if (vsIndex?.excess_pct != null) {
+        const ahead = vsIndex.excess_pct > 0;
+        cards.push({
+            label: `vs ${relative?.benchmark_index?.symbol ?? 'NIFTY 50'} (1Y)`,
+            value: `${ahead ? '+' : ''}${vsIndex.excess_pct.toFixed(1)}%`,
+            direction: ahead ? 'up' : 'down',
+            note: ahead ? 'Outperforming the index' : 'Lagging the index',
+        });
+    }
+
+    const vsSector = relative?.vs_sector?.['1Y'];
+    if (vsSector?.excess_pct != null && relative?.sector_index_symbol) {
+        const ahead = vsSector.excess_pct > 0;
+        cards.push({
+            label: `vs ${relative.sector_index_symbol} (1Y)`,
+            value: `${ahead ? '+' : ''}${vsSector.excess_pct.toFixed(1)}%`,
+            direction: ahead ? 'up' : 'down',
+            note: ahead ? 'Ahead of its sector' : 'Behind its own sector',
+        });
+    }
+
+    if (relative?.alpha_1y_pct != null) {
+        cards.push({
+            label: 'CAPM alpha (1Y)',
+            value: `${relative.alpha_1y_pct > 0 ? '+' : ''}${relative.alpha_1y_pct.toFixed(1)}%`,
+            direction: relative.alpha_1y_pct > 0 ? 'up' : 'down',
+            note: 'Return beyond what its beta implies',
+        });
+    }
+
+    const regime = relative?.volatility_regime;
+    if (regime?.india_vix != null) {
+        cards.push({
+            label: 'India VIX',
+            value: `${regime.india_vix} · ${regime.regime}`,
+            direction: regime.regime === 'calm' || regime.regime === 'normal' ? 'flat' : 'down',
+            note: 'Market volatility regime',
+        });
+    }
 
     // 1. P/E vs sector (from Financial Analyst data)
     const fin = agents['financial_node'];

@@ -409,7 +409,7 @@ who can actually do it, because several need dashboard access I do not have.
 
 ---
 
-#### G1. 🔴 Five phases of analytics never reach the UI
+#### G1. ✅ Analytics now reach the UI *(done)*
 
 `api/routes.py` forwards only `*_report` keys and `JUDGE_FIELDS`. `relative_context`,
 `quality_metrics` and `extended_risk` are **not in either**, so the frontend has no knowledge of
@@ -420,13 +420,30 @@ So a user still cannot see that HDFC Bank underperformed its own sector by 26 po
 is rising, or that Reliance's ROE is leverage-driven. The agents reason with all of it; the reader
 sees none of it.
 
-- [ ] Add the three payloads to the SSE `node_update` filter.
-- [ ] Extend `ComparisonRow` with index/sector excess (the component already exists for exactly
-      this).
-- [ ] A quality strip on the Financial card: Piotroski *n*/8, DuPont driver, cash conversion.
-- [ ] Rolling-beta and liquidity lines on the Risk card.
+- [x] `ANALYTICS_FIELDS` added to the SSE `node_update` filter, plus `extended_risk` lifted out of
+      `risk_data` (which is not streamed wholesale — it carries a full price series). `indices` is
+      deliberately excluded: 139 NSE records, useful server-side and far too large per update.
+      Measured payload cost: **3 KB**.
+- [x] Cached runs carry the same payload under `analytics`, so a cache hit renders identically.
+- [x] `ComparisonRow` leads with index/sector excess, CAPM alpha and the VIX regime.
+- [x] New `QualityPanel`: Piotroski *n*/max, DuPont driver with the full identity, cash conversion,
+      accruals — beside Sortino, rolling beta, 52-week percentile and liquidity.
+- [x] Missing values render as absent rather than hidden: an unavailable number and a bad one are
+      different things, and the Piotroski panel names which criteria were not evaluable.
 
-**This is the largest remaining engineering item**, and the one with the most visible payoff.
+**What a reader now sees for HDFC Bank** — none of which was visible before:
+
+```
+vs NIFTY 50 (1Y)    -17.6%    Lagging the index
+vs NIFTY BANK (1Y)  -26.3%    Behind its own sector
+CAPM alpha (1Y)     -14.3%
+Piotroski           3/6 (moderate)
+ROE driver          leverage   13.5% = margin 22.7% × turnover 0.07x × leverage 8.37x
+Beta 1Y vs 2Y       1.248 / 1.087  (rising)
+52-week position    9.6th pctile
+```
+
+486 tests passing (was 472); tsc clean, production build OK.
 
 #### G2. 🔴 Run logs do not survive on Render — Phase F cannot accumulate evidence
 
@@ -481,8 +498,9 @@ rate-limit message and the URL-encoding fix.
 - [ ] Rebuild the venv on **Python 3.11** to match `runtime.txt` (only 3.9 and 3.12 are installed
       here). The lazy-semaphore fix removed the practical consequence, so this is cosmetic — but it
       is why local runs emit end-of-life warnings and noisy asyncio teardown tracebacks.
-- [ ] Remove `ALPHA_VANTAGE_KEY` from `.env` — tested in Phase B, returns empty for Indian symbols.
-- [ ] `brew install gitleaks` for the stronger pre-commit layer (the built-in patterns work without it).
+- [x] `ALPHA_VANTAGE_KEY` retired in `.env` and `.env.example` — commented rather than deleted, so
+      the value is not lost. Tested in Phase B: empty payload for Indian symbols, immediate throttle.
+- [x] `gitleaks` 8.30.1 installed; the pre-commit hook picks it up automatically as its second layer.
 
 ---
 
