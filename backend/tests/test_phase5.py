@@ -305,6 +305,78 @@ def test_verdict_endpoint_strips_raw_data_blob(app_client):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase U3 — a shared permalink must render what the live page renders
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_verdict_endpoint_returns_analytics(app_client):
+    """Without this the frozen page lost all five phases of analytics — the
+    relative performance, Piotroski/DuPont, and the extended risk block — while
+    the live page showed them. A permalink is the one view built for an
+    audience, so it was the worst place to drop them."""
+    client, _, run_log = app_client
+    rid = run_log.new_run_id()
+    analytics = {
+        "relative_context": {"alpha_1y_pct": -14.3,
+                             "benchmark_index": {"symbol": "^NSEI"}},
+        "quality_metrics": {"piotroski": {"score": 3, "max_score": 6}},
+        "extended_risk": {"sortino_ratio": -1.16, "week52_percentile": 6.9},
+    }
+    run_log.write_run_log(rid, "X.NS", "X", judge_payload={}, analytics=analytics)
+    body = client.get(f"/api/verdict/{rid}").json()
+
+    assert body["analytics"]["relative_context"]["alpha_1y_pct"] == -14.3
+    assert body["analytics"]["quality_metrics"]["piotroski"]["score"] == 3
+    assert body["analytics"]["extended_risk"]["week52_percentile"] == 6.9
+
+
+def test_verdict_endpoint_has_analytics_key_even_when_absent(app_client):
+    """Older run logs predate `analytics`. The key must still be present and
+    empty so the frontend takes the same path rather than crashing."""
+    client, _, run_log = app_client
+    rid = run_log.new_run_id()
+    run_log.write_run_log(rid, "X.NS", "X", judge_payload={})
+    assert client.get(f"/api/verdict/{rid}").json()["analytics"] == {}
+
+
+def test_verdict_endpoint_keeps_display_fields_of_reports(app_client):
+    """data_table is display content, not a raw upstream blob. Dropping it made
+    every analyst card on a permalink read "No signals returned", and dropping
+    the four whitelisted scalars cost the comparison row four tiles."""
+    client, _, run_log = app_client
+    rid = run_log.new_run_id()
+    reports = {
+        "financial_report": {
+            "agent_name": "Financial Analyst",
+            "score": 7.0,
+            "data_table": [{"label": "ROE", "value": "13.5%", "signal": "positive"}],
+            "data": {"pe_premium_discount_pct": -10.2,
+                     "some": "huge upstream blob that must not be stored"},
+        },
+    }
+    run_log.write_run_log(rid, "X.NS", "X", analyst_reports=reports, judge_payload={})
+    rep = client.get(f"/api/verdict/{rid}").json()["reports"]["financial_report"]
+
+    assert rep["data_table"][0]["label"] == "ROE"
+    assert rep["data"]["pe_premium_discount_pct"] == -10.2
+    # the whitelist is a whitelist, not a passthrough
+    assert "some" not in rep["data"]
+
+
+def test_counter_factual_survives_the_run_log(app_client):
+    """Already in JUDGE_FIELDS, so it reaches the run log — this pins that,
+    because the frozen page now renders it."""
+    client, _, run_log = app_client
+    rid = run_log.new_run_id()
+    run_log.write_run_log(rid, "X.NS", "X", judge_payload={
+        "final_decision": "HOLD",
+        "counter_factual": {"current_band": "HOLD", "current_score": 5.4,
+                            "pillar_sensitivity": [], "veto_risks": [], "notes": []},
+    })
+    cf = client.get(f"/api/verdict/{rid}").json()["judge_report"]["counter_factual"]
+    assert cf["current_band"] == "HOLD" and cf["current_score"] == 5.4
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # /api/price-history — must resolve free-form company names
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -394,3 +466,27 @@ def test_price_history_route_returns_404_when_resolve_fails(app_client, monkeypa
     r = client.get("/api/price-history/zzzz_no_such_company?period=1mo")
     assert r.status_code == 404
     assert "could not resolve" in r.json()["detail"].lower()
+
+
+def test_every_streamed_judge_field_is_declared_in_graph_state():
+    """LangGraph merges a node's return into the state by key and silently
+    discards keys the schema does not declare.
+
+    `judge_node` returned counter_factual, judge_score, score_attribution,
+    strongest_pillar and weakest_pillar; none were declared, so all five were
+    dropped between the judge and the stream. Nothing errored — the fields were
+    simply never there, which is why "What would change this verdict?" never
+    rendered on any page and no run log or cache entry carries one.
+
+    Asserting the whole set rather than the five, because the next field added
+    to JUDGE_FIELDS will fail the same way.
+    """
+    from graph.state import StockAnalysisState
+    from api.routes import JUDGE_FIELDS
+
+    declared = set(StockAnalysisState.__annotations__)
+    missing = sorted(f for f in JUDGE_FIELDS if f not in declared)
+    assert not missing, (
+        "streamed by routes.py but not declared in StockAnalysisState, so "
+        f"LangGraph will drop them: {missing}"
+    )

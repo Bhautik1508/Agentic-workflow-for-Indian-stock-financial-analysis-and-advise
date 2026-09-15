@@ -60,6 +60,12 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
     const isDegraded = report.status === 'error' || report.degraded === true || report.score === null;
     const scoreValue = report.score ?? 0;
 
+    // A failed analyst can be opened when there is a reason to show. That
+    // reason used to live only in a `title` tooltip — which does not exist on
+    // touch, so on a phone "Excluded — data unavailable" was the end of it.
+    const hasError = !!report.error?.trim();
+    const canExpand = !isRunning && (!isDegraded || hasError);
+
     return (
         <motion.article
             id={`analyst-${shortName(report.agent_name).toLowerCase().replace(/\s+/g, '-')}`}
@@ -70,9 +76,9 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
         >
             {/* ─── Header row ─── */}
             <button
-                onClick={() => !isRunning && !isDegraded && setExpanded(v => !v)}
-                disabled={isRunning || isDegraded}
-                className={`w-full flex items-center gap-4 px-5 py-4 text-left ${(!isRunning && !isDegraded) ? 'cursor-pointer hover:bg-[#F8F7F2]' : ''} transition-colors`}
+                onClick={() => canExpand && setExpanded(v => !v)}
+                disabled={!canExpand}
+                className={`w-full flex items-center gap-4 px-5 py-4 text-left ${canExpand ? 'cursor-pointer hover:bg-[#F8F7F2]' : ''} transition-colors`}
             >
                 <AnalystMonogram name={report.agent_name} />
 
@@ -102,10 +108,11 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                                 <span className="text-small text-[#7A7F88] ml-2">Reasoning…</span>
                             </div>
                         ) : isDegraded ? (
-                            <p className="text-small text-[#7A7F88]" title={report.error ?? undefined}>
+                            <p className="text-small text-[#7A7F88]">
                                 {report.notRun
                                     ? 'Not run — the analysis stopped first'
                                     : 'Excluded — data unavailable'}
+                                {hasError && <span className="text-[#B6B8B8]"> · why?</span>}
                             </p>
                         ) : (
                             <p className="text-small text-[#4A4D55] line-clamp-1">
@@ -115,7 +122,7 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                     </div>
                 </div>
 
-                {!isRunning && !isDegraded && (
+                {canExpand && (
                     <ChevronDown
                         size={16}
                         className={`text-[#B6B8B8] transition-transform shrink-0 ${expanded ? 'rotate-180' : ''}`}
@@ -125,7 +132,7 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
 
             {/* ─── Expanded panel ─── */}
             <AnimatePresence initial={false}>
-                {expanded && !isRunning && !isDegraded && (
+                {expanded && canExpand && (
                     <motion.div
                         key="content"
                         initial={{ height: 0, opacity: 0 }}
@@ -135,6 +142,19 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                         className="overflow-hidden"
                     >
                         <div className="px-5 pb-5 pt-1 border-t border-[#E5E3DB]">
+                            {isDegraded ? (
+                                <div className="pt-4">
+                                    <h4 className="heading-eyebrow mb-2">Why it was excluded</h4>
+                                    <p className="text-small text-[#4A4D55] font-mono break-words">
+                                        {report.error}
+                                    </p>
+                                    <p className="text-micro text-[#B6B8B8] mt-3">
+                                        This pillar contributed nothing to the verdict — it was not
+                                        scored zero, it was left out of the weighting entirely.
+                                    </p>
+                                </div>
+                            ) : (
+                            <>
                             {report.summary && (
                                 <p className="text-body text-[#4A4D55] mb-5 max-w-prose">
                                     {report.summary}
@@ -190,6 +210,8 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                                     )}
                                 </div>
                             </div>
+                            </>
+                            )}
                         </div>
                     </motion.div>
                 )}

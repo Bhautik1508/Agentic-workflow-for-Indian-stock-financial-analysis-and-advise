@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, ArrowDown, Minus, ChevronsUp, ChevronsDown, AlertOctagon, Loader2, Database, Clock, RotateCw } from 'lucide-react';
+import { ArrowUp, ArrowDown, Minus, ChevronsUp, ChevronsDown, AlertOctagon, Loader2, Database, Clock, RotateCw, Zap, ChevronDown } from 'lucide-react';
 import type { AnalysisError, FinalDecision } from '@/hooks/useAnalysis';
 import { inr, pct } from '@/lib/format';
 import { topStrengths, topRisks } from '@/lib/strengths';
@@ -181,6 +181,10 @@ function HeroSkeleton({ status, message, error, onRetry }: {
 }
 
 export function VerdictHero({ decision, agents, status, message, error, onRetry }: VerdictHeroProps) {
+    // Declared before the early return below — a hook after it would run
+    // conditionally.
+    const [showQuality, setShowQuality] = useState(false);
+
     if (!decision) {
         return <HeroSkeleton status={status} message={message} error={error} onRetry={onRetry} />;
     }
@@ -197,11 +201,21 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
     const upside = decision.grounded_targets?.upside_pct ?? null;
     const downside = decision.grounded_targets?.downside_pct ?? null;
     const positionSize = decision.grounded_targets?.position_size_modifier ?? null;
+    // The number a reader is already computing in their head from the target
+    // and the stop. It was calculated and then never shown.
+    const rewardToRisk = decision.grounded_targets?.reward_to_risk ?? null;
     const horizonRaw = (decision as { time_horizon?: string }).time_horizon;
     const horizon = horizonRaw === 'short_term' ? 'short term'
                   : horizonRaw === 'medium_term' ? '6 months'
                   : horizonRaw === 'long_term' ? '12 months'
                   : null;
+
+    const catalysts = (decision.key_catalysts ?? []).filter((c) => c && c.trim()).slice(0, 3);
+    const dq = decision.data_quality ?? null;
+    const dqMissing = dq?.missing_critical_fields ?? [];
+    const dqSparse = dq?.sparse_sources ?? [];
+    const dqWarnings = dq?.warnings ?? [];
+    const dqHasDetail = dqMissing.length + dqSparse.length + dqWarnings.length > 0;
 
     const strengths = topStrengths(agents, 3);
     const risks = topRisks(agents, 3);
@@ -238,7 +252,12 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                         <p className="font-serif text-[22px] text-[#1A1B1E]">
                             <span className="text-[#7A7F88] font-sans text-[14px] mr-2">to</span>
                             <span className="font-tnum">{inr(target)}</span>
-                            <span className="ml-2 text-[#15803D] font-sans text-[14px] font-medium font-tnum">{pct(upside, { signed: true })}</span>
+                            {/* Not unconditionally green: the blended target can land
+                                BELOW spot, and a -30% "upside" printed in the gain
+                                colour reads as a gain. */}
+                            <span className={`ml-2 font-sans text-[14px] font-medium font-tnum ${upside >= 0 ? 'text-[#15803D]' : 'text-[#B91C1C]'}`}>
+                                {pct(upside, { signed: true })}
+                            </span>
                             {horizon && <span className="text-[#7A7F88] font-sans text-[14px] ml-2">in {horizon}</span>}
                         </p>
                     )}
@@ -253,6 +272,23 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                             {downside != null && <span className="text-[#B91C1C] ml-1">−{downside.toFixed(1)}%</span>}
                         </span>
                     )}
+                    {/* reward_to_risk is upside/downside with downside > 0, so a
+                        non-positive value means the target sits at or below spot.
+                        "-9.6 : 1" is not a reward-to-risk a reader can use; say
+                        what it actually means instead. */}
+                    {rewardToRisk != null && rewardToRisk > 0 && (
+                        <span className="font-tnum">
+                            <span className="text-[#7A7F88]">Reward:risk</span>{' '}
+                            <span className={rewardToRisk >= 2 ? 'text-[#15803D]' : rewardToRisk < 1 ? 'text-[#A16207]' : ''}>
+                                {rewardToRisk.toFixed(1)} : 1
+                            </span>
+                        </span>
+                    )}
+                    {rewardToRisk != null && rewardToRisk <= 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[#B91C1C]">
+                            <AlertOctagon size={11} /> Target at or below spot
+                        </span>
+                    )}
                     {positionSize != null && (
                         <span className="font-tnum"><span className="text-[#7A7F88]">Size</span> {positionSize.toFixed(2)}×</span>
                     )}
@@ -261,8 +297,13 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                             {decision.risk_profile}
                         </span>
                     )}
-                    {decision.data_quality && (
-                        <DataQualityChip overall={decision.data_quality.overall_completeness} />
+                    {dq && (
+                        <DataQualityChip
+                            overall={dq.overall_completeness}
+                            expandable={dqHasDetail}
+                            expanded={showQuality}
+                            onToggle={() => setShowQuality((v) => !v)}
+                        />
                     )}
                     {decision.stale_sources?.slice(0, 2).map((s, i) => (
                         <span key={i} className="inline-flex items-center gap-1 text-[11px] text-[#A16207]">
@@ -270,6 +311,25 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                         </span>
                     ))}
                 </div>
+
+                {/* ── What the completeness figure is actually missing ── */}
+                {showQuality && dqHasDetail && (
+                    <div className="-mt-3 mb-6 px-3 py-2.5 rounded-md border border-[#E5E3DB] bg-[#F8F7F2] space-y-1.5">
+                        {dqMissing.length > 0 && (
+                            <p className="text-small text-[#4A4D55]">
+                                <span className="text-[#7A7F88]">Missing:</span> {dqMissing.join(' · ')}
+                            </p>
+                        )}
+                        {dqSparse.length > 0 && (
+                            <p className="text-small text-[#4A4D55]">
+                                <span className="text-[#7A7F88]">Sparse sources:</span> {dqSparse.join(' · ')}
+                            </p>
+                        )}
+                        {dqWarnings.map((w, i) => (
+                            <p key={i} className="text-small text-[#A16207]">{w}</p>
+                        ))}
+                    </div>
+                )}
 
                 {/* ── Thesis (editorial lede) ── */}
                 {decision.investment_thesis && (
@@ -279,7 +339,7 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                 )}
 
                 {/* ── Strengths + Risks columns ── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6 pt-6 border-t border-[#E5E3DB]">
+                <div className={`grid grid-cols-1 md:grid-cols-2 ${catalysts.length > 0 ? 'lg:grid-cols-3' : ''} gap-x-10 gap-y-6 pt-6 border-t border-[#E5E3DB]`}>
                     <div>
                         <h3 className="heading-eyebrow mb-3">Strengths</h3>
                         {strengths.length === 0 ? (
@@ -324,6 +384,22 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                             </ul>
                         )}
                     </div>
+
+                    {/* The forward half of the thesis. The judge produces these
+                        and nothing rendered them. */}
+                    {catalysts.length > 0 && (
+                        <div>
+                            <h3 className="heading-eyebrow mb-3">Catalysts</h3>
+                            <ul className="space-y-2">
+                                {catalysts.map((c, i) => (
+                                    <li key={i} className="flex gap-3">
+                                        <Zap size={12} className="text-[#A16207] mt-1 shrink-0" />
+                                        <span className="text-small text-[#4A4D55]">{c}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </div>
 
                 {/* ── Dissent (small) ── */}
@@ -338,14 +414,38 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
     );
 }
 
-function DataQualityChip({ overall }: { overall: number }) {
+/**
+ * Completeness, and — when there is something behind it — what is missing.
+ *
+ * A bare "Data 62%" invites the question "which 62%?" and then refuses to
+ * answer it, while the backend has been sending the list of missing fields all
+ * along. A number that cannot be interrogated is worse than no number.
+ */
+function DataQualityChip({ overall, expandable, expanded, onToggle }: {
+    overall: number;
+    expandable?: boolean;
+    expanded?: boolean;
+    onToggle?: () => void;
+}) {
     const p = Math.round((overall ?? 0) * 100);
     const tone = p >= 85 ? 'text-[#15803D]'
               : p >= 70 ? 'text-[#A16207]'
               : 'text-[#B91C1C]';
+    const body = <><Database size={11} /> Data {p}%</>;
+
+    if (!expandable) {
+        return <span className={`inline-flex items-center gap-1 text-[11px] ${tone}`}>{body}</span>;
+    }
     return (
-        <span className={`inline-flex items-center gap-1 text-[11px] ${tone}`}>
-            <Database size={11} /> Data {p}%
-        </span>
+        <button
+            onClick={onToggle}
+            aria-expanded={expanded}
+            title={expanded ? 'Hide what is missing' : 'Show what is missing'}
+            className={`inline-flex items-center gap-1 text-[11px] cursor-pointer underline
+                decoration-dotted underline-offset-2 hover:opacity-80 transition ${tone}`}
+        >
+            {body}
+            <ChevronDown size={10} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </button>
     );
 }

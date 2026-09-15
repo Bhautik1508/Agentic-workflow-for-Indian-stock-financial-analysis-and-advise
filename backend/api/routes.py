@@ -47,6 +47,9 @@ async def get_frozen_verdict(run_id: str):
         "reports":         record.get("analyst_reports") or {},
         "telemetry":       record.get("telemetry") or {},
         "data_quality":    record.get("data_quality") or {},
+        # Same key the SSE `complete` event uses, so the frozen page hydrates
+        # the analytics panels through exactly the same path as a live run.
+        "analytics":       record.get("analytics") or {},
     }
 
 
@@ -297,6 +300,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                 duration_seconds=round(time.monotonic() - started, 2),
                 telemetry=run_telemetry,
                 data_quality=judge_payload.get("data_quality") or run_data_quality,
+                analytics=analytics,
             )
             return
 
@@ -309,6 +313,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
             duration_seconds=round(time.monotonic() - started, 2),
             telemetry=run_telemetry,
             data_quality=judge_payload.get("data_quality") or run_data_quality,
+            analytics=analytics,
         )
 
     return EventSourceResponse(event_generator())

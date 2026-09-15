@@ -83,6 +83,22 @@ class StockAnalysisState(TypedDict):
     veto: Optional[Dict[str, Any]]
     dissent_summary: Optional[str]
 
+    # Scoring detail the judge already computes.
+    #
+    # These must be declared here or LangGraph drops them: a node's return is
+    # merged into the state by key, and keys absent from this schema are
+    # discarded silently. `judge_node` has been returning all five since Phase
+    # 5, and all five were thrown away between the judge and the stream —
+    # which is why "What would change this verdict?" never rendered anywhere,
+    # and why no run log or cache entry carries a counter_factual.
+    judge_score: Optional[float]
+    score_attribution: Optional[Dict[str, Any]]
+    strongest_pillar: Optional[str]
+    weakest_pillar: Optional[str]
+
+    # Phase 5 — "what would change this verdict?"
+    counter_factual: Optional[Dict[str, Any]]
+
     # Phase 3 — data trust
     data_quality: Optional[Dict[str, Any]]
     llm_telemetry: Optional[Dict[str, Any]]

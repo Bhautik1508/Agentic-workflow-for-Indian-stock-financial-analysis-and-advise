@@ -96,6 +96,7 @@ def write_run_log(
     duration_seconds: Optional[float] = None,
     telemetry: Optional[dict] = None,
     data_quality: Optional[dict] = None,
+    analytics: Optional[dict] = None,
 ) -> Optional[str]:
     """Write a self-contained JSON record. Best-effort — never raises."""
     payload: Dict[str, Any] = {
@@ -113,6 +114,10 @@ def write_run_log(
         "judge": judge_payload or {},
         "telemetry": telemetry or {},
         "data_quality": data_quality or {},
+        # relative_context / quality_metrics / extended_risk. Without these a
+        # shared permalink lost all five phases of analytics the live page
+        # shows — the thing the page exists to share.
+        "analytics": analytics or {},
     }
 
     try:
@@ -126,9 +131,26 @@ def write_run_log(
         return None
 
 
+# The four scalars the comparison tiles read. Everything else in `data` is a
+# regurgitation of upstream API responses, which is what the scrub exists to
+# drop — but losing these made a shared permalink render four fewer tiles than
+# the live page for no reason anyone would have noticed.
+_KEEP_DATA_KEYS = (
+    "pe_premium_discount_pct",   # financial  -> "vs Sector P/E"
+    "beta_category",             # risk       -> "Beta profile"
+    "trend",                     # technical  -> "Trend"
+    "macro_environment",         # macro      -> "Macro setup"
+)
+
+
 def _scrub_reports(reports: dict) -> dict:
-    """Keep the parts useful for backtesting; drop the bulky raw `data` blob
-    when it's just a regurgitation of upstream API responses."""
+    """Keep the parts useful for backtesting and for re-rendering a frozen
+    verdict; drop the bulky raw `data` blob when it's just a regurgitation of
+    upstream API responses.
+
+    `data_table` is display content, not raw payload — a handful of
+    label/value/signal rows per agent. Dropping it made every analyst card on
+    /verdict/{id} say "No signals returned"."""
     cleaned: Dict[str, Any] = {}
     for key, report in reports.items():
         if not isinstance(report, dict):
@@ -145,8 +167,22 @@ def _scrub_reports(reports: dict) -> dict:
             "risk_flags":   report.get("risk_flags", []),
             "degraded":     report.get("degraded", False),
             "error":        report.get("error"),
+            "data_table":   report.get("data_table") or [],
         }
+        # Only when something survives the whitelist. A blob with nothing worth
+        # keeping leaves no `data` key at all, so "the raw blob is not stored"
+        # stays literally true rather than becoming "it is stored, but empty".
+        kept = _keep_data(report.get("data"))
+        if kept:
+            cleaned[key]["data"] = kept
     return cleaned
+
+
+def _keep_data(data: Any) -> Dict[str, Any]:
+    """Whitelist the scalars the UI reads out of an agent's `data` blob."""
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if k in _KEEP_DATA_KEYS}
 
 
 def _str_status(s: Any) -> str:
