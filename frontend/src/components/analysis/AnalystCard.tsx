@@ -23,6 +23,9 @@ interface AgentReportData {
     summary?: string;
     degraded?: boolean;
     error?: string | null;
+    /** The run stopped before this analyst was reached — distinct from an
+     *  analyst that ran and was excluded for want of data. */
+    notRun?: boolean;
 }
 
 interface AnalystCardProps {
@@ -100,7 +103,9 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                             </div>
                         ) : isDegraded ? (
                             <p className="text-small text-[#7A7F88]" title={report.error ?? undefined}>
-                                Excluded — data unavailable
+                                {report.notRun
+                                    ? 'Not run — the analysis stopped first'
+                                    : 'Excluded — data unavailable'}
                             </p>
                         ) : (
                             <p className="text-small text-[#4A4D55] line-clamp-1">

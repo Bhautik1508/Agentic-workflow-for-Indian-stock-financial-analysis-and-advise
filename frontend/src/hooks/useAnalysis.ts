@@ -200,9 +200,34 @@ export interface RunTelemetry {
     };
 }
 
+/**
+ * Why a run stopped.
+ *
+ * `message` says what is happening; this says why it isn't. They are kept
+ * separate so the streaming status line and the failure panel can never
+ * overwrite each other — which is exactly the bug that made every failure
+ * read as a bare "Analysis Failed".
+ *
+ * The backend deliberately reports failures *through* the stream rather than
+ * as an HTTP status, because EventSource cannot read the body of a non-200.
+ * Keeping the whole payload (not just a string) is what makes the message
+ * actionable: the rate-limit cooldown and the data-quality breakdown both
+ * live here.
+ */
+export interface AnalysisError {
+    detail: string;
+    /** Rate limits are self-inflicted and self-resolving — worth saying plainly. */
+    rateLimited: boolean;
+    /** Seconds the caller must wait before a retry can succeed. */
+    retryAfter: number | null;
+    /** Set when the run aborted on a data-quality floor rather than a fault. */
+    dataQuality: DataQuality | null;
+}
+
 export interface AnalysisState {
     status: 'idle' | 'initializing' | 'analyzing' | 'complete' | 'error';
     message: string;
+    error: AnalysisError | null;
     agents: Record<string, AgentReport>;
     final_decision: FinalDecision | null;
     run_id: string | null;
@@ -270,17 +295,25 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
     const [state, setState] = useState<AnalysisState>({
         status: 'idle',
         message: '',
+        error: null,
         agents: {},
         final_decision: null,
         run_id: null,
         ticker: null,
-    telemetry: null,
-    relative: null,
-    quality: null,
-    extendedRisk: null,
+        telemetry: null,
+        relative: null,
+        quality: null,
+        extendedRisk: null,
     });
 
     const savedToHistory = useRef(false);
+
+    // Bumping this re-enters the effect below, which tears down the old
+    // EventSource and opens a fresh one. A full page reload would do the same
+    // thing, but would also throw away the router state and the scroll
+    // position for what is usually a transient upstream failure.
+    const [retryNonce, setRetryNonce] = useState(0);
+    const retry = useCallback(() => setRetryNonce((n) => n + 1), []);
 
     const saveHistory = useCallback(
         (decision: FinalDecision | null) => {
@@ -303,15 +336,16 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
 
         setState({
             status: 'initializing',
-            message: 'Connecting to analysis engine...',
+            message: 'Connecting to the analysis engine\u2026',
+            error: null,
             agents: {},
             final_decision: null,
             run_id: null,
             ticker: null,
-    telemetry: null,
-    relative: null,
-    quality: null,
-    extendedRisk: null,
+            telemetry: null,
+            relative: null,
+            quality: null,
+            extendedRisk: null,
         });
 
         const API_BASE_URL = getApiUrl();
@@ -467,18 +501,23 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
 
         // ── error (named SSE event) ────────────
         eventSource.addEventListener('error', (e) => {
-            let errorMessage = 'Analysis failed';
+            let err: AnalysisError = {
+                detail: 'The analysis failed for an unknown reason.',
+                rateLimited: false,
+                retryAfter: null,
+                dataQuality: null,
+            };
             try {
                 const msg = JSON.parse((e as MessageEvent).data);
-                errorMessage = msg.detail ?? errorMessage;
-                // Rate limiting is self-inflicted and self-resolving, so say so
-                // plainly rather than letting it read as a broken analysis.
-                if (msg.rate_limited) {
-                    errorMessage = msg.detail;
-                }
-            } catch { /* no data on connection errors */ }
+                err = {
+                    detail: msg.detail ?? err.detail,
+                    rateLimited: msg.rate_limited === true,
+                    retryAfter: typeof msg.retry_after === 'number' ? msg.retry_after : null,
+                    dataQuality: msg.data_quality ?? null,
+                };
+            } catch { /* connection-level errors carry no payload */ }
 
-            setState((prev) => ({ ...prev, status: 'error', message: errorMessage }));
+            setState((prev) => ({ ...prev, status: 'error', message: err.detail, error: err }));
             eventSource.close();
         });
 
@@ -486,7 +525,21 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
         eventSource.onerror = () => {
             setState((prev) => {
                 if (prev.status === 'complete') return prev; // already done, ignore
-                return { ...prev, status: 'error', message: 'SSE connection lost' };
+                // A server-sent event named `error` dispatches an "error" event
+                // at the EventSource, so this fires for those too — right after
+                // the listener above, which has already recorded the real
+                // reason. Without this guard the specific message ("rate
+                // limited, wait 40s") is immediately overwritten by a generic
+                // transport one, which is how every failure ended up looking
+                // identical.
+                if (prev.error) return prev;
+                const detail = 'Lost the connection to the analysis engine.';
+                return {
+                    ...prev,
+                    status: 'error',
+                    message: detail,
+                    error: { detail, rateLimited: false, retryAfter: null, dataQuality: null },
+                };
             });
             eventSource.close();
         };
@@ -494,7 +547,7 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
         return () => {
             eventSource.close();
         };
-    }, [ticker, profile]);
+    }, [ticker, profile, retryNonce]);
 
     // Persist to history once complete
     useEffect(() => {
@@ -503,5 +556,5 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
         }
     }, [state.status, state.final_decision, saveHistory]);
 
-    return state;
+    return { ...state, retry };
 }

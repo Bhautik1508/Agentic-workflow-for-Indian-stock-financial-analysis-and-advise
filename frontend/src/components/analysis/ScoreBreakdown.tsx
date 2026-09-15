@@ -6,6 +6,10 @@ import { PILLAR_ORDER } from '@/lib/strengths';
 
 interface ScoreBreakdownProps {
     agents: Record<string, AgentReport | undefined>;
+    /** Run status, so a failed run stops shimmering as though it were still
+     *  working. Optional: read-only views pass nothing and get the old
+     *  behaviour. */
+    status?: string;
     onJumpToAnalyst?: (node: string) => void;
 }
 
@@ -15,7 +19,8 @@ function scoreColor(score: number): string {
     return '#B91C1C';
 }
 
-export function ScoreBreakdown({ agents, onJumpToAnalyst }: ScoreBreakdownProps) {
+export function ScoreBreakdown({ agents, status, onJumpToAnalyst }: ScoreBreakdownProps) {
+    const runFailed = status === 'error';
     return (
         <section className="mt-8">
             <h2 className="heading-eyebrow mb-3">How the verdict was built</h2>
@@ -23,7 +28,8 @@ export function ScoreBreakdown({ agents, onJumpToAnalyst }: ScoreBreakdownProps)
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-6">
                     {PILLAR_ORDER.map(({ node, label }, i) => {
                         const r = agents[node];
-                        const isLoading = !r;
+                        const notRun = !r && runFailed;
+                        const isLoading = !r && !runFailed;
                         const isDegraded = r?.status === 'error' || r?.degraded || r?.score === null;
                         const value = r?.score ?? 0;
 
@@ -31,12 +37,12 @@ export function ScoreBreakdown({ agents, onJumpToAnalyst }: ScoreBreakdownProps)
                             <button
                                 key={node}
                                 onClick={() => onJumpToAnalyst?.(node)}
-                                disabled={isLoading || isDegraded}
-                                className={`group text-left transition-colors ${(!isLoading && !isDegraded) ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                                disabled={isLoading || isDegraded || notRun}
+                                className={`group text-left transition-colors ${(!isLoading && !isDegraded && !notRun) ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
                             >
                                 <div className="flex items-baseline justify-between mb-1.5">
                                     <span className="text-small text-[#4A4D55]">{label}</span>
-                                    {isLoading ? (
+                                    {isLoading || notRun ? (
                                         <span className="text-micro text-[#B6B8B8]">—</span>
                                     ) : isDegraded ? (
                                         <span className="text-micro text-[#7A7F88]">n/a</span>
@@ -65,6 +71,9 @@ export function ScoreBreakdown({ agents, onJumpToAnalyst }: ScoreBreakdownProps)
                                 )}
                                 {isDegraded && (
                                     <p className="text-micro text-[#7A7F88] mt-1.5">Excluded from verdict</p>
+                                )}
+                                {notRun && (
+                                    <p className="text-micro text-[#7A7F88] mt-1.5">Not run</p>
                                 )}
                             </button>
                         );

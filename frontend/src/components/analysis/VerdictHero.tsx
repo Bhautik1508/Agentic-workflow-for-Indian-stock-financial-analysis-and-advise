@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, ArrowDown, Minus, ChevronsUp, ChevronsDown, AlertOctagon, Loader2, Database, Clock } from 'lucide-react';
-import type { FinalDecision } from '@/hooks/useAnalysis';
+import { ArrowUp, ArrowDown, Minus, ChevronsUp, ChevronsDown, AlertOctagon, Loader2, Database, Clock, RotateCw } from 'lucide-react';
+import type { AnalysisError, FinalDecision } from '@/hooks/useAnalysis';
 import { inr, pct } from '@/lib/format';
 import { topStrengths, topRisks } from '@/lib/strengths';
 import type { AgentReport } from '@/hooks/useAnalysis';
@@ -13,6 +14,12 @@ interface VerdictHeroProps {
     decision: FinalDecision | null;
     agents: Record<string, AgentReport | undefined>;
     status: string;
+    /** Live narration of the run, straight from the backend's `status` events. */
+    message?: string;
+    /** Why the run stopped, when it did. */
+    error?: AnalysisError | null;
+    /** Re-opens the stream in place. Omitted on read-only views like /verdict. */
+    onRetry?: () => void;
 }
 
 const VERDICT_CONFIG: Record<Verdict, {
@@ -30,21 +37,32 @@ const VERDICT_CONFIG: Record<Verdict, {
     STRONG_SELL:{ label: 'Strong Sell',icon: ChevronsDown, fg: 'text-[#991B1B]', bg: 'bg-[#FCD7D7]', border: 'border-[#E8898E]', dotBg: 'bg-[#991B1B]' },
 };
 
-function HeroSkeleton({ status }: { status: string }) {
-    const isError = status === 'error';
+/**
+ * The run in flight.
+ *
+ * A ~30-second wait with nothing but a shimmer reads as a hang. The backend
+ * already narrates every stage of the pipeline over SSE, so the honest thing
+ * is to show that narration rather than invent a progress bar we cannot
+ * honour.
+ */
+function ProgressPanel({ message }: { message: string }) {
     return (
         <section className="card-paper px-6 py-8 md:px-10 md:py-10">
-            <div className="flex items-center gap-3 mb-6">
-                {isError ? (
-                    <AlertOctagon size={18} className="text-[#B91C1C]" />
-                ) : (
-                    <Loader2 size={18} className="text-[#1E40AF] animate-spin" />
-                )}
-                <span className="heading-eyebrow">
-                    {isError ? 'Analysis Failed' : 'Verdict in progress'}
-                </span>
+            <div className="flex items-center gap-3 mb-5">
+                <Loader2 size={18} className="text-[#1E40AF] animate-spin" />
+                <span className="heading-eyebrow">Verdict in progress</span>
             </div>
-            <div className="space-y-3">
+
+            <p
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className="text-body text-[#4A4D55] mb-6 min-h-[1.5em]"
+            >
+                {message}
+            </p>
+
+            <div className="space-y-3" aria-hidden="true">
                 <div className="h-9 w-48 rounded skeleton-shimmer bg-[#F2F1EB]" />
                 <div className="h-4 w-3/4 rounded skeleton-shimmer bg-[#F2F1EB]" />
                 <div className="h-4 w-2/3 rounded skeleton-shimmer bg-[#F2F1EB]" />
@@ -53,8 +71,119 @@ function HeroSkeleton({ status }: { status: string }) {
     );
 }
 
-export function VerdictHero({ decision, agents, status }: VerdictHeroProps) {
-    if (!decision) return <HeroSkeleton status={status} />;
+/**
+ * The run that stopped, and why.
+ *
+ * Every failure used to render as the words "Analysis Failed" over three
+ * shimmer bars, while the reason — which the backend takes real trouble to
+ * send through the stream — was parsed and dropped. A rate limit, a bad
+ * ticker and a dead upstream all looked identical, and none of them looked
+ * recoverable.
+ */
+function ErrorPanel({ error, onRetry }: { error: AnalysisError; onRetry?: () => void }) {
+    // A retry inside the cooldown just fails again, so hold the button until
+    // the window the server named has actually passed. Seeded from the prop and
+    // never synced back to it — a fresh error remounts this component via its
+    // key, which re-seeds the countdown without an effect.
+    const [waitLeft, setWaitLeft] = useState(error.retryAfter ?? 0);
+
+    useEffect(() => {
+        if (waitLeft <= 0) return;
+        const t = window.setTimeout(() => setWaitLeft((v) => v - 1), 1000);
+        return () => window.clearTimeout(t);
+    }, [waitLeft]);
+
+    const held = waitLeft > 0;
+    const missing = error.dataQuality?.missing_critical_fields ?? [];
+    const sparse = error.dataQuality?.sparse_sources ?? [];
+
+    return (
+        <section className="card-paper px-6 py-8 md:px-10 md:py-10" role="alert">
+            <div className="flex items-center gap-3 mb-4">
+                <AlertOctagon size={18} className="text-[#B91C1C]" />
+                <span className="heading-eyebrow">
+                    {error.rateLimited ? 'Rate limited' : 'Analysis could not complete'}
+                </span>
+            </div>
+
+            <p className="text-lede text-[#1A1B1E] max-w-2xl mb-5">{error.detail}</p>
+
+            {(missing.length > 0 || sparse.length > 0) && (
+                <div className="mb-5 pt-4 border-t border-[#E5E3DB] space-y-2">
+                    {missing.length > 0 && (
+                        <p className="text-small text-[#4A4D55]">
+                            <span className="text-[#7A7F88]">Missing:</span> {missing.join(' \u00b7 ')}
+                        </p>
+                    )}
+                    {sparse.length > 0 && (
+                        <p className="text-small text-[#4A4D55]">
+                            <span className="text-[#7A7F88]">Sparse sources:</span> {sparse.join(' \u00b7 ')}
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {onRetry && (
+                <button
+                    onClick={onRetry}
+                    disabled={held}
+                    className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-md border
+                        border-[#1E40AF] bg-[#F0F4FB] text-[#1E40AF] transition cursor-pointer
+                        hover:bg-[#E5EBF8] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <RotateCw size={14} />
+                    {held ? `Try again in ${humanWait(waitLeft)}` : 'Try again'}
+                </button>
+            )}
+
+            {error.rateLimited && (
+                <p className="text-micro mt-3 max-w-xl">
+                    The limit is per-IP and guards a shared model quota. Nothing is wrong with
+                    this stock or with the analysis.
+                </p>
+            )}
+        </section>
+    );
+}
+
+/** "Try again in 1739s" is not a readable cooldown. Seconds below a minute
+ *  and a half, m/s above it. */
+function humanWait(sec: number): string {
+    if (sec < 90) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return rm ? `${h}h ${rm}m` : `${h}h`;
+}
+
+const UNKNOWN_FAILURE: AnalysisError = {
+    detail: 'The analysis stopped before producing a verdict.',
+    rateLimited: false,
+    retryAfter: null,
+    dataQuality: null,
+};
+
+function HeroSkeleton({ status, message, error, onRetry }: {
+    status: string;
+    message?: string;
+    error?: AnalysisError | null;
+    onRetry?: () => void;
+}) {
+    if (status === 'error') {
+        const err = error ?? UNKNOWN_FAILURE;
+        // Keyed on the failure itself so a different error restarts the
+        // cooldown from scratch rather than inheriting the previous count.
+        return <ErrorPanel key={`${err.detail}|${err.retryAfter}`} error={err} onRetry={onRetry} />;
+    }
+    return <ProgressPanel message={message || 'Connecting to the analysis engine\u2026'} />;
+}
+
+export function VerdictHero({ decision, agents, status, message, error, onRetry }: VerdictHeroProps) {
+    if (!decision) {
+        return <HeroSkeleton status={status} message={message} error={error} onRetry={onRetry} />;
+    }
 
     const cfg = VERDICT_CONFIG[decision.decision] ?? VERDICT_CONFIG.HOLD;
     const VerdictIcon = cfg.icon;

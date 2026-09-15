@@ -107,6 +107,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                     decision={state.final_decision}
                     agents={state.agents}
                     status={state.status}
+                    message={state.message}
+                    error={state.error}
+                    onRetry={state.retry}
                 />
 
                 {/* ─── Comparison row ─── */}
@@ -125,7 +128,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                 </section>
 
                 {/* ─── Score breakdown (always visible) ─── */}
-                <ScoreBreakdown agents={state.agents} onJumpToAnalyst={jumpToAnalyst} />
+                <ScoreBreakdown agents={state.agents} status={state.status} onJumpToAnalyst={jumpToAnalyst} />
 
                 {/* ─── What would change this verdict? ─── */}
                 <CounterFactualPanel counterFactual={state.final_decision?.counter_factual} />
@@ -137,6 +140,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                         {AGENT_NODES.map((nodeName, i) => {
                             const report = state.agents[nodeName];
                             const inProgress = (isAnalyzing || state.status === 'initializing') && !report;
+                            // No report *and* a failed run means this analyst never
+                            // ran at all — saying its data was unavailable would be
+                            // stating something we do not know.
+                            const notRun = !report && state.status === 'error';
 
                             const reportStatus: 'running' | 'complete' | 'error' = report
                                 ? (report.status === 'error' || report.degraded ? 'error' : 'complete')
@@ -157,6 +164,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                                         summary: report?.summary,
                                         degraded: report?.degraded,
                                         error: report?.error ?? null,
+                                        notRun,
                                     }}
                                 />
                             );
