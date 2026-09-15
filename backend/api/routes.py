@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
@@ -15,6 +16,8 @@ router = APIRouter()
 # Shown to the browser in place of a raw exception. The detail goes to the log
 # with the run_id, so a user report is still traceable without handing the
 # internet our stack traces and upstream URLs.
+IST = timezone(timedelta(hours=5, minutes=30))
+
 GENERIC_ERROR = (
     "Analysis could not be completed due to an internal error. "
     "Please try again; if it persists, quote the run id below."
@@ -183,9 +186,12 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                     "event": "start",
                     "data": _dumps({"run_id": run_id, "ticker": ticker, "risk_profile": profile_name, "cached": True})
                 }
+                # Label it as a replay and keep the ORIGINAL run time. The page
+                # used to stamp `new Date()` at render, so an hours-old cached
+                # verdict presented itself as current.
                 yield {
                     "event": "complete",
-                    "data": _dumps(cached, default=str)
+                    "data": _dumps({**cached, "cached": True}, default=str)
                 }
                 return
 
@@ -239,6 +245,18 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                         yield {"event": "error", "data": _dumps(
                             {"detail": str(err_data), "run_id": run_id})}
                     return
+                elif event["event"] == "complete":
+                    # The runner's complete event carries only a message. Stamp
+                    # when the run actually finished, so the page can report
+                    # that instead of its own render time.
+                    yield {
+                        "event": "complete",
+                        "data": _dumps({
+                            "message": event.get("data") or "Analysis Finished",
+                            "generated_at": datetime.now(IST).isoformat(),
+                            "cached": False,
+                        }),
+                    }
                 else:
                     yield {
                         "event": event["event"],
@@ -257,6 +275,9 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                 "risk_profile": profile_name,
                 "telemetry": run_telemetry,
                 "data_quality": judge_payload.get("data_quality") or run_data_quality,
+                # Read back on a cache hit so a replay can state when the
+                # verdict was actually produced.
+                "generated_at": datetime.now(IST).isoformat(),
             }
             if judge_payload:
                 save_analysis_to_cache(cache_key, cached_payload)
@@ -328,10 +349,12 @@ async def get_price_history(ticker: str, period: str = "1y"):
     resolved via the same `resolve_ticker` path the analysis flow uses."""
     import yfinance as yf
     import math
-    from data.market_data import resolve_ticker
+    from data.market_data import drop_incomplete_sessions, resolve_ticker
 
-    # Validate period
-    valid_periods = {"1mo", "3mo", "6mo", "1y"}
+    # "5d" is what the header asks for to compute a one-day change. It was
+    # missing from this set, so the request silently fell back to "1y" and
+    # pulled 251 rows to render two numbers.
+    valid_periods = {"5d", "1mo", "3mo", "6mo", "1y"}
     if period not in valid_periods:
         period = "1y"
 
@@ -350,9 +373,13 @@ async def get_price_history(ticker: str, period: str = "1y"):
             symbol = resolved
 
         stock = yf.Ticker(symbol)
-        hist = stock.history(period=period)
+        # Drop the still-forming session bar before anything reads the last
+        # close. Left in, its NaN close reached the header as a confident
+        # -100.00% on every stock, because JS coerces null to 0 in the change
+        # calculation.
+        hist = drop_incomplete_sessions(stock.history(period=period))
 
-        if hist.empty:
+        if hist is None or hist.empty:
             raise HTTPException(status_code=404, detail=f"No price data found for {symbol}")
 
         # Compute SMAs

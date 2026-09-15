@@ -273,22 +273,25 @@ body {
     background: #FFFFFF !important;
     font-size: 11.5pt;
   }
-  /* Hide nav/UX chrome */
+  /* Hide nav/UX chrome.
+
+     This used to include `button`, which silently deleted the two things a
+     printed brief most needs: the entire "How the verdict was built" grid
+     (every pillar is a button) and every analyst card's header — name, score
+     and signal line. Chrome is marked with .no-print instead, so a button that
+     is actually content survives. */
   .no-print,
   header,
-  nav,
-  button,
-  [role="button"] {
+  nav {
     display: none !important;
   }
-  /* But keep links visible (so the share URL prints) */
-  a[href]::after {
+
+  /* Expand the target of absolute links only. Internal navigation is relative,
+     so the old unrestricted rule stamped a bare "(/)" after every in-app link. */
+  a[href^="http"]::after {
     content: " (" attr(href) ")";
     font-size: 9pt;
     color: #4A4D55;
-  }
-  a.no-href-print[href]::after {
-    content: "";
   }
   .card-paper {
     border: 1px solid #C6C3B8 !important;

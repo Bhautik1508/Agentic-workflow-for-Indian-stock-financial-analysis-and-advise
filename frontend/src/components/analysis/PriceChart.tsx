@@ -125,7 +125,7 @@ export function PriceChart({ ticker, targetPrice = null, stopLoss = null }: Pric
             {/* Header */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2">
                 <h3 className="heading-eyebrow">Price chart</h3>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 no-print">
                     {PERIODS.map((p) => (
                         <button
                             key={p.value}

@@ -45,10 +45,15 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
     const isComplete = state.status === 'complete';
     const isAnalyzing = state.status === 'analyzing';
 
-    const timestamp = new Date().toLocaleString('en-IN', {
-        day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-    });
+    // The run's own completion time, sent with the `complete` event — not
+    // `new Date()` at render, which presented an hours-old cached verdict as
+    // current every time the page re-rendered.
+    const timestamp = state.generatedAt
+        ? new Date(state.generatedAt).toLocaleString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        })
+        : undefined;
 
     function jumpToAnalyst(node: string) {
         const id = `analyst-${node.replace('_node', '').replace(/_/g, '-')}`;
@@ -67,6 +72,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                     ticker={decodedName}
                     exchange="NSE"
                     timestamp={isComplete ? timestamp : undefined}
+                    cached={isComplete && state.cached}
                 />
             </div>
 

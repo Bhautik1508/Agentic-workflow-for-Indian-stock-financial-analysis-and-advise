@@ -354,7 +354,7 @@ untested.
 
 ---
 
-### Phase U2 — Stop corrupting the output
+### Phase U2 — Stop corrupting the output ✅ BUILT
 
 **🔴 New, found by running locally: the header reports every stock as down 100%.**
 
@@ -410,15 +410,57 @@ them.
 > **The `/api/price-history` endpoint is a separate code path and still has the bad row**, which
 > is why the −100% above survives. That is the remaining work in this item.
 
-1. Scope the print rule so `ScoreBreakdown` and `AnalystCard` headers survive. Hide chrome by
-   class (`.no-print`), not by tag.
-2. Suppress the `a[href]::after` URL expansion on internal nav links — keep it for the share
-   permalink, which is the one case it was written for.
-3. Use the run's real completion timestamp instead of `new Date()` at render, and label a cache
-   hit as one.
+1. ✅ **Print rule scoped.** `button` and `[role="button"]` removed from the hide list; chrome is
+   marked `.no-print` instead, and the chart's period selector gained that class. Measured under
+   emulated print media, before and after:
 
-*Exit check:* print to PDF and confirm all five pillar scores and all five analyst names and
-scores are present. Compare against a pre-fix PDF.
+   | | before | after |
+   |---|---|---|
+   | pillar scores visible | **0** | **5** |
+   | analyst names visible | **0** | **5** |
+   | chart period buttons | 0 | 0 (still hidden) |
+   | nav header | hidden | hidden |
+
+2. ✅ **`a[href]::after` restricted to `a[href^="http"]`.** Internal navigation is relative, so the
+   unrestricted rule stamped a bare `(/)` after every in-app link — now 0. The dead
+   `.no-href-print` escape hatch went with it.
+
+3. ✅ **Real completion timestamp.** The backend stamps `generated_at` when a run finishes and
+   stores it in the cached payload; a cache hit replays the original and flags `cached: true`.
+   Verified round-trip on Cipla:
+
+   ```
+   FIRST RUN (live) : ... | 16 Sept 2026, 01:08 am
+   SECOND LOAD (cache): ... | cached · 16 Sept 2026, 01:08 am
+   ```
+
+   A cache entry written before `generated_at` existed has no time to show, so it reads
+   "from cache" rather than inventing one.
+
+4. ✅ **The −100% header.** `5d` added to the endpoint's allow-list, and
+   `drop_incomplete_sessions()` applied there too. `TopBar` now narrows to rows with a finite
+   close via a type predicate, so the arithmetic cannot run on null.
+
+   ```
+   RELIANCE.NS  period=5d rows=  3  ->  ₹1257.50  -1.30%
+   TCS.NS       period=5d rows=  3  ->  ₹2200.80  -0.15%
+   HDFCBANK.NS  period=5d rows=  3  ->  ₹ 708.25  +2.08%
+   INFY.NS      period=5d rows=  3  ->  ₹1037.70  +0.12%
+   ```
+
+   3 rows, not 251 — the §6 duplicate-fetch cost drops with it.
+
+*Exit check met.* Printed brief verified end-to-end: verdict, comparison tiles, chart, all five
+pillar scores with bars, all five analyst cards, quality panel, disclaimer.
+
+**One gotcha worth recording:** the first print test reported 0 pillars and 0 analyst names *after*
+the fix. The CSS on disk was correct; the Next dev server had never recompiled `globals.css` — it
+was serving a chunk 50 minutes stale. Restarting it changed nothing about the code and everything
+about the result. Check what the server is serving before concluding a fix failed.
+
+**Not fixed here:** a cached verdict written before these fixes still replays its old numbers —
+e.g. HDFC Bank showing `52-week position 100th pctile` while the same page says it is at 52-week
+lows. A fresh run returns 6.9. Cache entries expire within the hour.
 
 ---
 

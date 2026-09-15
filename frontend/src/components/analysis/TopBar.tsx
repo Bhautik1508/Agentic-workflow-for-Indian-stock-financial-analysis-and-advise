@@ -9,7 +9,10 @@ import { inr } from '@/lib/format';
 interface TopBarProps {
     ticker: string;
     exchange?: string;
+    /** When the verdict was produced. Undefined until a run completes. */
     timestamp?: string;
+    /** True when the verdict was replayed from cache rather than computed now. */
+    cached?: boolean;
 }
 
 interface PriceData {
@@ -19,7 +22,20 @@ interface PriceData {
     change_pct: number;
 }
 
-export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
+/** Only `close` is read here; the API returns the full OHLCV row. */
+interface PriceRecord {
+    close: number | null;
+}
+
+/** A row that actually has a close. The predicate below narrows to this so the
+ *  arithmetic cannot silently operate on null. */
+type ClosedRow = PriceRecord & { close: number };
+
+function hasClose(row: PriceRecord): row is ClosedRow {
+    return typeof row.close === 'number' && Number.isFinite(row.close);
+}
+
+export function TopBar({ ticker, exchange = 'NSE', timestamp, cached = false }: TopBarProps) {
     const [price, setPrice] = useState<PriceData | null>(null);
 
     useEffect(() => {
@@ -30,16 +46,23 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
                     `${API_BASE_URL}/api/price-history/${encodeURIComponent(ticker)}?period=5d`,
                 );
                 const data = await res.json();
-                if (data.data && data.data.length >= 2) {
-                    const latest = data.data[data.data.length - 1];
-                    const prev = data.data[data.data.length - 2];
+                // Skip rows with no close. yfinance emits a bar for the
+                // still-forming session whose OHLC are null while its volume is
+                // real, and `null - 1257.5` is -1257.5 in JS, not an error — so
+                // every stock reported a confident -100.00%. An unknown price
+                // must read as unknown, never as a catastrophic loss.
+                const rows: ClosedRow[] = Array.isArray(data.data)
+                    ? (data.data as PriceRecord[]).filter(hasClose)
+                    : [];
+                if (rows.length >= 2) {
+                    const latest = rows[rows.length - 1];
+                    const prev = rows[rows.length - 2];
                     const change = latest.close - prev.close;
-                    const changePct = (change / prev.close) * 100;
                     setPrice({
                         current_price: latest.close,
                         previous_close: prev.close,
                         change,
-                        change_pct: changePct,
+                        change_pct: prev.close !== 0 ? (change / prev.close) * 100 : 0,
                     });
                 }
             } catch {
@@ -50,6 +73,12 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
     }, [ticker]);
 
     const decodedTicker = ticker;   // already decoded by the page
+    // A cached verdict says so. An entry stored before the run time was
+    // recorded has no time to show, so it says only that it is cached rather
+    // than inventing one.
+    const stamp = timestamp
+        ? (cached ? `cached \u00b7 ${timestamp}` : timestamp)
+        : (cached ? 'from cache' : null);
     const isPositive = price ? price.change >= 0 : true;
     const changeColor = isPositive ? 'text-[#15803D]' : 'text-[#B91C1C]';
     const arrow = isPositive ? '▲' : '▼';
@@ -92,11 +121,16 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp }: TopBarProps) {
                             </span>
                         </div>
                     )}
-                    {timestamp && (
+                    {stamp && (
                         <>
                             <div className="hidden md:block w-px h-4 bg-[#E5E3DB]" />
-                            <span className="hidden md:inline text-[11px] font-mono text-[#7A7F88]">
-                                {timestamp}
+                            <span
+                                className="hidden md:inline text-[11px] font-mono text-[#7A7F88]"
+                                title={cached
+                                    ? 'Replayed from cache — not re-run just now'
+                                    : 'When this verdict was produced'}
+                            >
+                                {stamp}
                             </span>
                         </>
                     )}

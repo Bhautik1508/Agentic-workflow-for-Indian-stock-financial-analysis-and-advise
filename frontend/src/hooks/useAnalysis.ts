@@ -235,6 +235,12 @@ export interface AnalysisState {
     // backend emits the `start` event.
     ticker: string | null;
     telemetry: RunTelemetry | null;
+    /** When the verdict was actually produced (ISO). Null until a run completes,
+     *  and null for cache entries written before this was recorded — which is
+     *  shown as "no time" rather than as now. */
+    generatedAt: string | null;
+    /** True when this verdict was replayed from cache rather than computed. */
+    cached: boolean;
     relative: RelativeContext | null;
     quality: QualityMetrics | null;
     extendedRisk: ExtendedRisk | null;
@@ -301,6 +307,8 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
         run_id: null,
         ticker: null,
         telemetry: null,
+        generatedAt: null,
+        cached: false,
         relative: null,
         quality: null,
         extendedRisk: null,
@@ -343,6 +351,8 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
             run_id: null,
             ticker: null,
             telemetry: null,
+            generatedAt: null,
+            cached: false,
             relative: null,
             quality: null,
             extendedRisk: null,
@@ -362,6 +372,7 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
                 message: 'Analysis in progress...',
                 run_id: data.run_id ?? null,
                 ticker: data.ticker ?? prev.ticker,
+                cached: data.cached === true,
             }));
         });
 
@@ -480,6 +491,10 @@ export function useAnalysis(ticker: string | null, profile: RiskProfile = 'balan
                     extendedRisk: cachedAnalytics.extended_risk ?? prev.extendedRisk,
                     status: 'complete',
                     message: data.message ?? 'Analysis complete',
+                    // The run's own completion time, not the browser's render
+                    // time. A cache hit replays the original.
+                    generatedAt: data.generated_at ?? prev.generatedAt,
+                    cached: data.cached === true ? true : prev.cached,
                     // Cache hits ship the original run_id so /verdict/{id} can find the run log.
                     run_id: data.run_id ?? prev.run_id,
                     ticker: data.ticker ?? prev.ticker,
