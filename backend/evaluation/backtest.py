@@ -36,6 +36,13 @@ BEARISH = {"SELL", "STRONG_SELL"}
 HORIZONS = {"1M": 30, "3M": 90, "6M": 180}
 
 
+# A hit-rate is only meaningful above a sample size. Below this the number is
+# noise, and tuning anything on it is fitting to noise — stated explicitly
+# because a 100% hit-rate on three verdicts is exactly the sort of figure that
+# gets acted on.
+MIN_CREDIBLE_SAMPLE = 50
+
+
 @dataclass
 class VerdictRecord:
     run_id: str
@@ -46,6 +53,7 @@ class VerdictRecord:
     profile: Optional[str] = None
     target_price: Optional[float] = None
     stop_loss: Optional[float] = None
+    analysis_version: str = "legacy"
 
 
 def load_verdicts(run_log_dir: str) -> List[VerdictRecord]:
@@ -72,6 +80,7 @@ def load_verdicts(run_log_dir: str) -> List[VerdictRecord]:
         except ValueError:
             continue
         out.append(VerdictRecord(
+            analysis_version=data.get("analysis_version") or "legacy",
             run_id=data.get("run_id", name),
             ticker=ticker,
             action=action,
@@ -110,6 +119,14 @@ def forward_return(prices: Dict[str, float], start: datetime, days: int) -> Opti
     if begin[1] <= 0:
         return None
     return round((end[1] - begin[1]) / begin[1] * 100.0, 2)
+
+
+def group_by_version(verdicts: List[VerdictRecord]) -> Dict[str, List[VerdictRecord]]:
+    """Split verdicts by the engine that produced them."""
+    cohorts: Dict[str, List[VerdictRecord]] = {}
+    for v in verdicts:
+        cohorts.setdefault(v.analysis_version, []).append(v)
+    return cohorts
 
 
 def score_verdicts(
@@ -155,10 +172,39 @@ def score_verdicts(
         }
 
     directional = [v for v in verdicts if v.action in BULLISH or v.action in BEARISH]
+    scored_1m = per_horizon.get("1M", {}).get("scored", 0)
     return {
         "verdicts_total": len(verdicts),
         "verdicts_directional": len(directional),
         "verdicts_hold": len(verdicts) - len(directional),
         "by_horizon": per_horizon,
+        "sample_is_credible": scored_1m >= MIN_CREDIBLE_SAMPLE,
+        "min_credible_sample": MIN_CREDIBLE_SAMPLE,
         "rows": rows,
     }
+
+
+def score_by_cohort(
+    verdicts: List[VerdictRecord],
+    price_history: Dict[str, Dict[str, float]],
+    horizons: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
+    """Score each engine cohort separately, and never pool them.
+
+    Pooling a pre-Phase-A cohort (beta fabricated at 1.00, fundamentals 20%
+    complete) with the current engine produces a hit-rate that describes neither.
+    """
+    from analysis_version import ANALYSIS_VERSION, describe
+
+    cohorts = group_by_version(verdicts)
+    out: Dict[str, Any] = {
+        "current_version": ANALYSIS_VERSION,
+        "cohorts": {},
+        "pooled_is_meaningful": len(cohorts) <= 1,
+    }
+    for version, group in sorted(cohorts.items()):
+        result = score_verdicts(group, price_history, horizons)
+        result["description"] = describe(version)
+        result["is_current"] = version == ANALYSIS_VERSION
+        out["cohorts"][version] = result
+    return out

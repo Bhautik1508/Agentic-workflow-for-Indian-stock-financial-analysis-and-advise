@@ -354,39 +354,80 @@ depends on a hardcoded constant. 453 tests passing (was 426).
 
 ---
 
-### Phase F — Validate that any of this helped *(ongoing)*
+### Phase F — Validate that any of this helped ✅ *(infrastructure done; evidence accrues over time)*
 
-The harness from Phase 5 of IMPROVEMENTS.md already exists. Point it at this work.
+- [x] **Verdicts are stamped with the engine that produced them** (`analysis_version.py`), and the
+      backtest reports **per cohort, refusing to pool them**. This is the item that mattered most:
+      before Phase A every beta was 1.00 and fundamentals were 20% complete, so averaging those
+      verdicts with today's yields a hit-rate describing neither engine — and would have kept doing
+      so indefinitely, because old logs never expire on their own.
+- [x] **Sample-size honesty.** `MIN_CREDIBLE_SAMPLE = 50`; anything below reports
+      `NOT YET EVIDENCE` and says outright not to tune weights on it. A 100% hit-rate on three
+      verdicts is exactly the kind of figure that gets acted on.
+- [x] **Field-coverage regression check** (`scripts/check_coverage.py`). No LLM calls, so it is
+      cheap enough to run on every push — it catches a changed Screener label or a broken selector
+      *before* a verdict is wrong. Banks carry a lower floor (0.6): a bank P&L has no OPM row and no
+      meaningful debt-to-equity, so ~0.7 is full marks rather than a regression.
+- [x] **Nightly workflow** (`.github/workflows/nightly-eval.yml`) for coverage + backtest, with the
+      golden set **opt-in only** — 18 analyses is ~108 LLM calls, and a scheduled job must not spend
+      that silently. The cron stays commented until the keys exist as repository secrets.
+- [x] Coverage added to the main CI as `continue-on-error`: upstream sources are flaky, and a
+      transient Screener outage must surface a regression without failing an unrelated PR.
+- [ ] **Pillar-weight tuning — deliberately not done.** The bar is 50 scored verdicts; there are 6,
+      all from the legacy engine. Tuning now would be fitting to noise from an engine that no longer
+      exists.
 
-- [ ] **Re-run the backtest after each phase.** Baseline today: **1M hit-rate 17% (1/6), 3M 33%
-      (2/6)**, n=6 — far too small to conclude anything, which is precisely why it must accumulate
-      before any weight is tuned on it.
-- [ ] **Field-coverage regression test** — fail the build if `fundamental_completeness` for a
-      Nifty-50 name drops below a floor. Coverage regressions are otherwise invisible until a
-      verdict is already wrong.
-- [ ] **Golden-set drift check** after each calculation change. A real beta *will* move some
-      verdicts; the set tells you which, so the change is a decision rather than a surprise.
-- [ ] **Only then re-tune the pillar weights** (`scoring/profiles.py`). Tuning weights against
-      n=6 would be fitting noise.
+**Current state of the evidence:**
 
-**Exit criteria:** ≥50 scored verdicts before any weight is changed on backtest evidence.
+| Cohort | Verdicts | 1M scored | Hit rate | Verdict on the number |
+|---|---|---|---|---|
+| `legacy` | 7 | 6 | 17% | **Not comparable** — fabricated beta, 0.2 coverage |
+| `2026.09.15-e` | 1 | 0 | — | Horizon has not elapsed |
+
+The honest summary is that **the engine has still never been measured**. What changed is that it now
+*can* be: verdicts accumulate under a version stamp, the 1M horizon elapses on its own, and the
+tooling will say when the sample is large enough to mean something.
+
+**Coverage check, live:**
+
+```
+[ok] TCS.NS       completeness 1.00 (floor 0.80)  sources={'screener.in': 8, 'yfinance': 34}
+[ok] RELIANCE.NS  completeness 0.90 (floor 0.80)  missing: current_ratio
+[ok] HDFCBANK.NS  completeness 0.80 (floor 0.60)  missing: debt_to_equity, current_ratio
+```
+
+**Exit criteria:** partially met. CI is green and the measurement runs — but "a dashboard answering
+*were we right?*" cannot be satisfied by code alone. It needs roughly 50 verdicts at a one-month
+horizon, which is calendar time, not engineering. 472 tests passing (was 453).
 
 ---
 
-## 4. Suggested order
+## 4. Where this leaves the project
 
-1. **Phase A** — one day, and it stops three fabricated numbers reaching users. Non-negotiable.
-2. **Phase B** — the completeness fix that makes every other pillar better, using data already fetched.
-3. **Phase C** — the largest perceived-quality gain per line of code; "vs the index" is what a reader wants.
-4. Then **D → E**, with **F** running continuously.
+Phases A–F are built. The sequencing held up: A removed three fabricated numbers, B quadrupled the
+data behind them, C–E added context and depth, F made the result measurable.
+
+Three things are deliberately **not** done, each because doing them would mean inventing something:
+
+- **`current_ratio`** — Screener does not split current assets from current liabilities. It is the
+  single field between 0.9 and 1.0 coverage, and deriving it would be a guess wearing a number.
+- **Promoter pledge trend** — pledge history is not in the shareholding scrape, and a trend cannot
+  come from one snapshot.
+- **Pillar-weight tuning** — needs ~50 scored verdicts; there are 6, from a retired engine.
 
 ## 5. What not to do
 
-- **Don't add a paid feed yet.** Phase B shows the free data is largely already arriving and simply
-  not being used. Pay only once free sources are genuinely exhausted.
+- **Don't add a paid feed yet.** Phase B showed the free data was largely already arriving and
+  simply not being used: coverage went 0.2 → 0.9 without a new source. Pay only once free sources
+  are genuinely exhausted — `current_ratio` alone does not justify a subscription.
 - **Don't ask the LLM to compute ratios.** Anything deterministic belongs in Python, where it is
-  testable and reproducible. The agents should interpret numbers, not derive them.
+  testable. The agents interpret numbers; they do not derive them.
 - **Don't scrape more sites for redundancy's sake.** Each scrape is a maintenance liability — the
   non-breaking-space bug in Screener's keys silently produced "N/A" CAGR in *every prompt ever
-  sent* until this audit. Prefer depth on sources you already parse.
-- **Don't tune weights on the current backtest.** n=6 is noise.
+  sent*, and the five-row truncation hid Net Profit and the entire cash-flow statement. Depth on
+  sources you already parse beats breadth.
+- **Don't tune weights on the current backtest.** n=6, wrong engine.
+- **Don't trust a number because it looks reasonable.** Every defect found here — beta 1.00,
+  `vol_1y` silently becoming two years, a Z-score compared against another model's threshold —
+  produced plausible output. The ones that were caught were caught by checking against expectation,
+  not by reading the code.

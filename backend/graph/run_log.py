@@ -9,6 +9,8 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
+from analysis_version import ANALYSIS_VERSION
+
 logger = logging.getLogger(__name__)
 
 RUN_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".runlog")
@@ -100,6 +102,9 @@ def write_run_log(
         "ticker": ticker,
         "company_name": company_name,
         "timestamp_ist": datetime.now(IST).isoformat(),
+        # Which engine produced this verdict. A hit-rate pooled across engines
+        # measures neither of them — see analysis_version.py.
+        "analysis_version": ANALYSIS_VERSION,
         "duration_seconds": duration_seconds,
         "error": error,
         "inputs_summary": inputs_summary or {},

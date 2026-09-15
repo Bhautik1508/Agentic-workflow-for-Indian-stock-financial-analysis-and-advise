@@ -49,7 +49,7 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
-    from evaluation.backtest import load_verdicts, score_verdicts
+    from evaluation.backtest import load_verdicts, score_by_cohort
 
     verdicts = load_verdicts(args.run_log_dir)
     if not verdicts:
@@ -58,24 +58,35 @@ def main() -> int:
 
     print(f"Loaded {len(verdicts)} verdicts; fetching prices...", file=sys.stderr)
     prices = fetch_prices({v.ticker for v in verdicts})
-    result = score_verdicts(verdicts, prices)
+    report = score_by_cohort(verdicts, prices)
 
     if args.json:
-        print(json.dumps(result, indent=2, default=str))
+        print(json.dumps(report, indent=2, default=str))
         return 0
 
-    print(f"\nVerdicts: {result['verdicts_total']} "
-          f"({result['verdicts_directional']} directional, {result['verdicts_hold']} HOLD)\n")
-    print(f"  {'Horizon':<10}{'Scored':<9}{'Hits':<7}{'Hit rate':<11}{'Avg return':<12}Note")
-    for label, stats in result["by_horizon"].items():
-        rate = "n/a" if stats["hit_rate"] is None else f"{stats['hit_rate']*100:.0f}%"
-        avg = "n/a" if stats["avg_directional_return_pct"] is None else f"{stats['avg_directional_return_pct']:+.2f}%"
-        print(f"  {label:<10}{stats['scored']:<9}{stats['hits']:<7}{rate:<11}{avg:<12}{stats['note']}")
+    print(f"\nEngine version now: {report['current_version']}")
+    if not report["pooled_is_meaningful"]:
+        print("  Verdicts span MORE THAN ONE engine version. Reported separately —\n"
+              "  a hit-rate pooled across engines describes neither of them.")
 
-    scored_1m = result["by_horizon"].get("1M", {}).get("scored", 0)
-    if scored_1m and scored_1m < 20:
-        print(f"\n  Note: only {scored_1m} scorable verdicts at 1M. Too small to conclude "
-              f"anything — treat the rate as directional, not evidence.")
+    for version, result in report["cohorts"].items():
+        marker = "  <-- current" if result["is_current"] else ""
+        print(f"\n── cohort {version}{marker} ──")
+        print(f"   {result['description']}")
+        print(f"   {result['verdicts_total']} verdicts "
+              f"({result['verdicts_directional']} directional, {result['verdicts_hold']} HOLD)")
+        print(f"   {'Horizon':<9}{'Scored':<8}{'Hits':<6}{'Hit rate':<10}{'Avg return':<12}Note")
+        for label, stats in result["by_horizon"].items():
+            rate = "n/a" if stats["hit_rate"] is None else f"{stats['hit_rate']*100:.0f}%"
+            avg = ("n/a" if stats["avg_directional_return_pct"] is None
+                   else f"{stats['avg_directional_return_pct']:+.2f}%")
+            print(f"   {label:<9}{stats['scored']:<8}{stats['hits']:<6}{rate:<10}{avg:<12}{stats['note']}")
+
+        scored = result["by_horizon"].get("1M", {}).get("scored", 0)
+        if not result["sample_is_credible"]:
+            print(f"   NOT YET EVIDENCE: {scored} scorable verdicts at 1M against a bar of "
+                  f"{result['min_credible_sample']}.")
+            print(f"   Do not tune pillar weights on this — it would be fitting to noise.")
     return 0
 
 
