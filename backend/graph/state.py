@@ -54,6 +54,7 @@ class StockAnalysisState(TypedDict):
     market_breadth: Optional[Dict]
     peer_data: Optional[Dict]
     relative_context: Optional[Dict]
+    quality_metrics: Optional[Dict]
     indices: Optional[Dict]
     
     # Agent reports (populated as agents complete)

@@ -832,9 +832,13 @@ def fetch_market_context() -> dict:
         print(f"yFinance Macro fetch failed: {e}")
     return result
 
-@cached_fetch("rbi.repo_rate", ttl_seconds=86400)
 def fetch_rbi_repo_rate() -> dict:
-    """Policy rate. Static baseline — live DBIE scraping is Phase C work.
+    """Policy rate. Static baseline — live DBIE scraping is future work.
+
+    Deliberately NOT cached: it performs no I/O, it just reads a constant. The
+    cache added nothing and made a RISK_FREE_RATE_PCT change invisible for a
+    whole day, so the macro agent could report a different rate from the one the
+    Sharpe calculation had already used.
 
     Reads the same single constant the Sharpe calculation uses, so the macro
     agent and the risk maths can no longer disagree about the rate.

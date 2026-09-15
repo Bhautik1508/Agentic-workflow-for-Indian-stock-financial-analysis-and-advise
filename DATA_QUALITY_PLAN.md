@@ -257,24 +257,51 @@ sector. 402 tests passing (was 370).
 
 ---
 
-### Phase D — Deeper fundamental quality *(3–4 days)*
+### Phase D — Deeper fundamental quality ✅ *(done)*
 
-All computable from data Phase B makes available. No new sources.
+`scoring/quality_metrics.py`. All of it computed in Python and handed to the agents as inputs —
+a model asked to derive a Piotroski score from a table produces something plausible and
+unverifiable. The agents interpret; they do not calculate.
 
-- [ ] **Piotroski F-Score (0–9)** — profitability, leverage, efficiency. A compact, well-understood
-      quality signal, and a strong input to the financial pillar.
-- [ ] **DuPont decomposition** of ROE (margin × turnover × leverage) — distinguishes a genuinely
-      profitable business from a levered one, which a single ROE number hides.
-- [ ] **Cash conversion** (CFO / net profit, multi-year). The most practical accounting-quality
-      check available from free data; persistent divergence is the classic warning sign.
-- [ ] **Accruals ratio** as a second earnings-quality lens.
-- [ ] **Promoter pledge trend**, not just the level — the veto already reads pledge %, but direction
-      matters more than a snapshot.
-- [ ] Feed these to the Financial and Risk agents as *computed inputs*, not as things the model is
-      asked to infer. Deterministic maths belongs in Python; judgement belongs in the prompt.
+- [x] **Piotroski F-Score**, scored out of the criteria actually evaluable. Eight of the nine are
+      computable from Screener; the ninth (change in current ratio) needs a current-assets split
+      Screener does not publish, so it is reported as **unavailable rather than failed** — counting
+      it as a failure would understate every company by a point. Each criterion carries its own
+      explanation (`debt/assets 5.92% to 6.23%`), so a FAIL is auditable.
+- [x] **DuPont decomposition** of ROE into margin × turnover × leverage, naming which lever
+      dominates.
+- [x] **Cash conversion** (CFO / net profit), latest and 3-year average — a single year of
+      divergence is noise.
+- [x] **Accruals ratio** `(NI − CFO) / total assets` as the second earnings-quality lens.
+- [x] Fed to the **Financial and Risk** prompts through one renderer.
+- [ ] **Promoter pledge *trend* — not built.** `promoter_trend` (holding direction) already exists
+      in `governance_data`, but pledge *history* is not in the shareholding scrape, and a trend
+      cannot be derived from a single snapshot. Deriving one would be inventing data.
 
-**Exit criteria:** F-Score and cash conversion appear in every financial report; the judge can cite
-an accounting-quality reason.
+**DuPont earns its place immediately.** Two real companies:
+
+| | TCS | Reliance |
+|---|---|---|
+| ROE | **46.1%** | **10.6%** |
+| Net margin | 18.5% | 9.1% |
+| Asset turnover | 1.47x | 0.49x |
+| Equity multiplier | **1.69x** | **2.41x** |
+| Driver | **margin** | **leverage** |
+
+A single ROE number says TCS is four times better. The decomposition says *why*, and that
+Reliance's is substantially borrowed — exactly the distinction the phase existed to make.
+
+Piotroski is similarly differentiating: TCS 5/8 (falling ROA and asset turnover despite high
+absolute profitability) against Reliance 6/8 (improving ROA, falling leverage). Neither is obvious
+from the headline ratios.
+
+**A caching bug surfaced here.** `fetch_rbi_repo_rate` was wrapped in `@cached_fetch` despite doing
+no I/O — it only reads a constant. The cache made a `RISK_FREE_RATE_PCT` change invisible for a day,
+so the macro agent could report a different rate from the one the Sharpe calculation had already
+used. Now uncached.
+
+**Exit criteria met:** F-Score and cash conversion appear in every financial report, and the judge
+can cite an accounting-quality reason. 426 tests passing (was 402).
 
 ---
 

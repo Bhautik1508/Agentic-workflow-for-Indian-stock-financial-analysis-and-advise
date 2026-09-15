@@ -1,6 +1,7 @@
 from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate, str_field
 from models.reports import FinancialReport
 from data.screener_summary import compute_cagr, find_row, latest_value, summarize_screener
+from scoring.quality_metrics import render_for_prompt as render_quality
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 FINANCIAL_SYSTEM_PROMPT = """You are a Senior Equity Research Analyst at a top-tier Indian brokerage with 15+ years
@@ -73,6 +74,9 @@ ROE            {roe_pct}%        {sector_med_roe}%  {roe_vs_sector}
 Top Peers:
 {peer_table_rows}
 (Format each peer: "Ticker | P/E | P/B | ROE | Rev Growth")
+
+━━━ ACCOUNTING QUALITY (computed, not inferred) ━━━
+{quality_metrics}
 
 ━━━ SCREENER.IN 10-YEAR TREND ━━━
 Revenue CAGR (5Y):      {revenue_cagr_5y}
@@ -240,7 +244,10 @@ async def run_financial_analysis(state: StockAnalysisState) -> AgentReport:
         if table_rows:
             peer_table_rows = "\n".join(table_rows)
     
+    quality_block = render_quality(state.get("quality_metrics"))
+
     prompt = FINANCIAL_USER_PROMPT.format(
+        quality_metrics=quality_block,
         company_name=state["company_name"],
         ticker=state["ticker"],
         sector=fundamental.get("sector", "Unknown"),

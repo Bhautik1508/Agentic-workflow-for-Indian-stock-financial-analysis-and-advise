@@ -126,6 +126,14 @@ async def run_stock_analysis(
         # Extract screener data from market_fetch
         screener_data = market_data.get("screener_data", {})
 
+        # ── Accounting-quality metrics ──
+        # Computed in Python, not inferred by the model: a model asked to derive
+        # a Piotroski score from a table produces something plausible and
+        # unverifiable. The agents interpret these; they do not calculate them.
+        from scoring.quality_metrics import build_quality_metrics
+
+        quality_metrics = build_quality_metrics(screener_data)
+
         # ── Altman Z. The veto in scoring/vetos.py has always read
         # `altman_z_score`; nothing ever wrote it, so the distress check was
         # dead code and the risk prompt printed N/A on every run.
@@ -193,6 +201,7 @@ async def run_stock_analysis(
             "market_breadth": market_breadth,
             "peer_data": peer_data,
             "relative_context": relative_context,
+            "quality_metrics": quality_metrics,
             "indices": indices,
             "run_id": run_id,
             "risk_profile": profile_name,
