@@ -1,6 +1,7 @@
 import numpy as np
 from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate, str_field
 from models.reports import RiskReport
+from data.relative_strength import render_for_prompt
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 RISK_SYSTEM_PROMPT = """You are a Senior Risk Manager at a SEBI-registered Portfolio Management Service (PMS) firm
@@ -45,6 +46,9 @@ Value at Risk (95%, 1-day):  {var_95_1day}%
 
 ATR (14-day):                ₹{atr_14}
   → Daily expected movement range
+
+━━━ RELATIVE PERFORMANCE (vs index & sector) ━━━
+{relative_performance}
 
 ━━━ PRICE POSITION RISK ━━━
 % from 52-Week High:         {pct_from_52w_high}%
@@ -148,6 +152,7 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
     inst = state.get("institutional_data", {})
     earnings = state.get("earnings_data", {})
     market_breadth = state.get("market_breadth", {})
+    relative_block = render_for_prompt(state.get("relative_context"))
     
     # Optional sector median fallback
     peer_data = state.get("peer_data", {})
@@ -219,6 +224,7 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         current_ratio=format_metric(fundamental.get("current_ratio")),
         altman_z=format_metric(fundamental.get("altman_z_score")),
         vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
+        relative_performance=relative_block,
         fear_level=str_field(market_breadth, "fear_level", "normal").replace("_", " ").upper(),
         days_to_earnings=earnings.get("days_to_earnings", "unknown"),
         earnings_proximity_risk=str_field(earnings, "earnings_proximity_risk", "unknown").upper(),

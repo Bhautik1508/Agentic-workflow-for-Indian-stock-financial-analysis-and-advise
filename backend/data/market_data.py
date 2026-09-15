@@ -1136,12 +1136,55 @@ def risk_free_rate_annual() -> float:
 DEFAULT_BENCHMARK = "^NSEI"
 
 
+@cached_fetch("nse.all_indices", ttl_seconds=1800)
+async def fetch_all_indices() -> dict:
+    """Every NSE index in one call: Nifty 50, all sectorals, and India VIX.
+
+    NSE publishes `perChange30d` / `perChange365d` per index, so sector-relative
+    performance needs no extra history fetch — 139 indices for one request,
+    shared across every analysis by the trading-day cache.
+
+    Returns {} on failure; the caller treats absence as "no relative context"
+    rather than substituting anything.
+    """
+    try:
+        def _get():
+            session = requests.Session()
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "application/json",
+                "Referer": "https://www.nseindia.com/",
+            }
+            # NSE hands out a cookie on the home page before serving its APIs.
+            session.get("https://www.nseindia.com/", headers=headers, timeout=10)
+            resp = session.get("https://www.nseindia.com/api/allIndices",
+                               headers=headers, timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+
+        payload = await asyncio.to_thread(_get)
+        rows = (payload or {}).get("data") or []
+        by_symbol = {
+            str(row.get("indexSymbol")).strip(): row
+            for row in rows if row.get("indexSymbol")
+        }
+        logger.info(f"[indices] fetched {len(by_symbol)} NSE indices")
+        return by_symbol
+    except Exception as exc:
+        logger.warning(f"[indices] NSE allIndices failed: {str(exc)[:120]}")
+        return {}
+
+
 @cached_fetch("yfinance.index_history", ttl_seconds=3600)
-async def fetch_index_history(symbol: str = DEFAULT_BENCHMARK, period: str = "1y") -> dict:
+async def fetch_index_history(symbol: str = DEFAULT_BENCHMARK, period: str = "2y") -> dict:
     """OHLC history for a market index.
 
     One series shared by every analysis, so the fetch cache reduces this to a
     single call per trading day for the whole app.
+
+    Two years, not one: a 1y fetch returns ~247 sessions, one short of the 251
+    closes a 250-session lookback needs, so the 1Y comparison — and the CAPM
+    alpha that depends on it — silently came back unavailable.
 
     Returns {} on failure rather than raising — the caller must be able to tell
     "no benchmark" apart from "a benchmark", because the alternative is what

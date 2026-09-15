@@ -213,21 +213,47 @@ field carrying a source, and no abort on a large cap. 370 tests passing (was 339
 
 ---
 
-### Phase C — Benchmark-relative context *(2–3 days)*
+### Phase C — Benchmark-relative context ✅ *(done)*
 
-Nothing in the current output answers "compared to what?" — the single most common question about
-any equity call.
+- [x] **Relative strength vs Nifty 50** over 1M/3M/6M/1Y, with the excess stated explicitly.
+- [x] **Sector-relative performance** via NSE `allIndices`. One request returns **139 indices**
+      carrying `perChange30d` / `perChange365d` each, so the sector comparison costs no extra
+      history fetch. Sector→index mapping handles both vocabularies that reach us — Screener's
+      ("Information Technology") and yfinance's ("Technology") — and prefers industry over sector
+      so "Private Sector Bank" routes to NIFTY PVT BANK rather than the broader NIFTY BANK.
+- [x] **CAPM alpha** alongside the beta and correlation from Phase A. Alpha returns `None` when
+      beta is unmeasured, rather than quietly computing against a fabricated 1.0 — which would be
+      the excess return wearing a more authoritative name.
+- [x] **India VIX** from the same NSE payload, banded into calm / normal / elevated / stressed with
+      an actionable note per regime.
+- [x] Surfaced in the **Technical and Risk prompts** through one shared renderer, so both agents
+      phrase the comparison identically and both are told "unavailable" where a number is genuinely
+      missing — an agent told nothing invents something.
 
-- [ ] **Relative strength vs Nifty 50** over 1M/3M/6M/1Y, from the benchmark series added in Phase A.
-- [ ] **Sector-relative performance** using NSE `allIndices` (✅ verified working) — map the
-      company's sector to its sectoral index (NIFTY IT, NIFTY BANK, …). "Down 8% while its sector is
-      down 15%" is a different call from "down 8%".
-- [ ] **Alpha and correlation** alongside beta, now that a real benchmark exists.
-- [ ] **India VIX** from NSE as a market-regime input, replacing prose about "market regime" with a
-      number.
-- [ ] Surface all of it in the Technical and Risk prompts, and in the UI's existing `ComparisonRow`.
+**A window bug surfaced during verification.** The 1Y comparison and the alpha both came back
+`unavailable`: `fetch_index_history` requested `period="1y"`, which returns ~247 sessions — one
+short of the 251 closes a 250-session lookback needs. The benchmark now fetches two years (495
+sessions). Worth noting the guard worked as designed: `period_return_pct` returned `None` rather
+than reporting a partial window as a full year.
 
-**Exit criteria:** every verdict states the stock's move against both the index and its sector.
+**What the agents now see** (real output):
+
+```
+Versus NIFTY 50:
+  1Y   stock   -24.66%   NIFTY 50    -7.04%   excess   -17.62%
+Versus sector index NIFTY IT:
+  1Y   stock   -24.66%   NIFTY IT   -17.68%   excess    -6.98%
+  sector index P/E 18.85, P/B 5.2, yield 2.72%
+CAPM alpha (1Y): -19.68%
+India VIX 13.27 — regime NORMAL
+```
+
+And for HDFC Bank, the number that best justifies the phase: **1Y −24.68% against NIFTY BANK
++1.65%, an excess of −26.33%.** A bank falling 25% while its sector rose is a completely different
+call from a bank falling with its sector — and the judge had no way to tell those apart before.
+
+**Exit criteria met:** every verdict now states the stock's move against both the index and its
+sector. 402 tests passing (was 370).
 
 ---
 

@@ -11,7 +11,7 @@ from data.market_data import (
     fetch_bse_governance, fetch_nse_insider_trading, fetch_world_bank_macro,
     fetch_market_context, fetch_rbi_repo_rate, fetch_risk_data, fetch_technical_data,
     fetch_earnings_data, fetch_institutional_data, fetch_sector_peers,
-    fetch_market_breadth, fetch_index_history
+    fetch_market_breadth, fetch_index_history, fetch_all_indices
 )
 from data.governance_data import fetch_governance_data
 from data.options_data import fetch_options_signals
@@ -74,6 +74,8 @@ async def run_stock_analysis(
         # Get sector for peer comparison
         sector = market_data.get("fundamental_data", {}).get("sector", "")
 
+        indices = await fetch_all_indices()
+
         risk_data, tech_data, earnings_data, institutional_data, peer_data, market_breadth = await asyncio.gather(
             fetch_risk_data(ticker, hist_df, nifty_df),
             fetch_technical_data(ticker, hist_df),
@@ -102,6 +104,24 @@ async def run_stock_analysis(
             **fetch_market_context(),
             **fetch_rbi_repo_rate()
         }
+
+        # ── Benchmark- and sector-relative context ──
+        # "Down 8%" is not a verdict input; "down 8% while the sector is down
+        # 15%" is. NSE publishes 30d/365d moves per index, so the sector
+        # comparison costs no extra fetch.
+        from data.relative_strength import build_relative_context
+        from data.market_data import _close_by_date, risk_free_rate_pct
+
+        _fund_for_sector = market_data.get("fundamental_data") or {}
+        relative_context = build_relative_context(
+            _close_by_date(hist_df),
+            _close_by_date(nifty_df) if nifty_df is not None else None,
+            indices,
+            sector=_fund_for_sector.get("sector"),
+            industry=_fund_for_sector.get("industry"),
+            beta=(risk_data or {}).get("beta"),
+            risk_free_pct=risk_free_rate_pct(),
+        )
 
         # Extract screener data from market_fetch
         screener_data = market_data.get("screener_data", {})
@@ -172,6 +192,8 @@ async def run_stock_analysis(
             "options_data": options_data,
             "market_breadth": market_breadth,
             "peer_data": peer_data,
+            "relative_context": relative_context,
+            "indices": indices,
             "run_id": run_id,
             "risk_profile": profile_name,
         }

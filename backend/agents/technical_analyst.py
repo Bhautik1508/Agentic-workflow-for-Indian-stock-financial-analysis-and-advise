@@ -1,5 +1,6 @@
 from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry, parse_and_validate, str_field
 from models.reports import TechnicalReport
+from data.relative_strength import render_for_prompt
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 TECHNICAL_SYSTEM_PROMPT = """You are a Chartered Market Technician (CMT) and head of technical research at a leading
@@ -66,6 +67,9 @@ Today's Volume:      {volume_today:,}
 20-Day Avg Volume:   {volume_sma_20:,}
 Volume Ratio:        {volume_ratio}x  → {volume_interpretation}
 OBV Trend:           {obv_trend}  → {obv_interpretation}
+
+━━━ RELATIVE PERFORMANCE (vs index & sector) ━━━
+{relative_performance}
 
 ━━━ BROADER MARKET CONTEXT ━━━
 Market Regime:    {market_regime}
@@ -157,6 +161,7 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
     ta_data = state.get("technical_data", {})
     price_data = state.get("price_data", {})
     market_breadth = state.get("market_breadth", {})
+    relative_block = render_for_prompt(state.get("relative_context"))
     options_data = state.get("options_data", {})
     
     c = ta_data.get("current_price", price_data.get("current_price", 0))
@@ -248,6 +253,7 @@ async def run_technical_analysis(state: StockAnalysisState) -> AgentReport:
         fib_618=format_metric(fib.get("fib_618")),
         fib_786=format_metric(fib.get("fib_786")),
         fib_100=format_metric(fib.get("fib_100")),
+        relative_performance=relative_block,
         market_regime=str_field(market_breadth, "market_regime", "neutral").upper(),
         vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
         fear_level=str_field(market_breadth, "fear_level", "normal").replace("_", " ").upper(),
