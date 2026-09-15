@@ -11,7 +11,8 @@ from data.market_data import (
     fetch_bse_governance, fetch_nse_insider_trading, fetch_world_bank_macro,
     fetch_market_context, fetch_rbi_repo_rate, fetch_risk_data, fetch_technical_data,
     fetch_earnings_data, fetch_institutional_data, fetch_sector_peers,
-    fetch_market_breadth, fetch_index_history, fetch_all_indices
+    fetch_market_breadth, fetch_index_history, fetch_all_indices,
+    drop_incomplete_sessions,
 )
 from data.governance_data import fetch_governance_data
 from data.options_data import fetch_options_signals
@@ -55,6 +56,19 @@ async def run_stock_analysis(
         # Extract DataFrames for TA and Risk
         hist = market_data.get("price_data", {}).get("history", [])
         hist_df = pd.DataFrame(hist) if hist else pd.DataFrame()
+
+        # Guarded here as well as at the fetch: a `@cached_fetch` hit returns
+        # the stored payload without re-running the fetch body, so a payload
+        # captured mid-session carries the bad row into every later run of the
+        # day. See drop_incomplete_sessions for what that costs.
+        before = len(hist_df)
+        hist_df = drop_incomplete_sessions(hist_df)
+        if len(hist_df) != before:
+            hist_df = hist_df.reset_index(drop=True)
+            logger.info(
+                f"[runner] {ticker}: dropped {before - len(hist_df)} row(s) with "
+                f"no close (incomplete session)"
+            )
 
         yield {"event": "status", "data": "Compiling technical indicators, risk models & earnings data locally..."}
 

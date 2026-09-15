@@ -38,6 +38,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Optional, Tuple
+from serialization import dump as json_dump
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ def write(key: str, entry: CacheEntry) -> None:
         # every later read has to fail on.
         tmp = f"{path}.tmp{os.getpid()}"
         with open(tmp, "w") as fh:
-            json.dump(entry.to_dict(), fh, default=str)
+            json_dump(entry.to_dict(), fh)
         os.replace(tmp, path)
     except (OSError, TypeError, ValueError) as exc:
         logger.debug(f"[fetch-cache] could not persist {key}: {exc}")

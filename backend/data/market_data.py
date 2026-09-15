@@ -17,6 +17,31 @@ NSE_SUFFIX = ".NS"
 # rolling beta, and yfinance is already asked for period="2y".
 HISTORY_SESSIONS = 500
 
+
+def drop_incomplete_sessions(frame):
+    """Remove rows that have no closing price.
+
+    yfinance appends a row for the current, still-forming session: its OHLC are
+    NaN while the volume is already real. Everything anchored on
+    `Close.iloc[-1]` then silently inherits the NaN — the 1Y return, Calmar, the
+    52-week distances, the headline change — and a NaN serialises as the bare
+    token `NaN`, which is valid Python and invalid JSON, so it takes the whole
+    analysis page down in the browser rather than blanking a single field.
+
+    Worse than the crash is what it does when it does not crash: with the bad
+    row present, a stock down 26% on the year reported a 52-week percentile of
+    100.0 — sitting at its high. The benchmark fetch has always dropped these
+    rows; the stock's own history never did.
+
+    Applied both at fetch and at the point of use, because a `@cached_fetch` hit
+    returns a stored payload without re-running the fetch body.
+    """
+    if frame is None or getattr(frame, "empty", True):
+        return frame
+    if "Close" not in getattr(frame, "columns", []):
+        return frame
+    return frame[frame["Close"].notna()]
+
 @cached_fetch("yfinance.earnings", ttl_seconds=21600)
 async def fetch_earnings_data(ticker: str) -> dict:
     """Fetch earnings calendar, EPS surprises, and proximity risk."""
@@ -1279,7 +1304,7 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
 
     # ── STEP 1: Price history (most reliable, never rate-limited) ──
     try:
-        hist_df = stock.history(period="2y")
+        hist_df = drop_incomplete_sessions(stock.history(period="2y"))
         if hist_df is not None and not hist_df.empty:
             tmp = hist_df.reset_index()
             if 'Date' in tmp.columns:

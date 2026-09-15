@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 from analysis_version import ANALYSIS_VERSION
+from serialization import dump as json_dump
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ def write_run_log(
         prune_run_logs()
         path = os.path.join(RUN_LOG_DIR, f"{_safe(run_id)}__{_safe(ticker)}.json")
         with open(path, "w") as f:
-            json.dump(payload, f, default=str, indent=2)
+            json_dump(payload, f, indent=2)
         return path
     except Exception as exc:
         logger.warning(f"Failed to write run log for {run_id}: {exc}")

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
 from api.security import check_analyze_rate_limit, require_debug_access
+from serialization import dumps, json_safe
 from graph.runner import run_stock_analysis
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,12 @@ JUDGE_FIELDS = (
 #
 # `indices` is deliberately NOT here: it is 139 NSE index records, useful to the
 # server and far too large to stream per node update.
+# Re-exported so the SSE call sites below read naturally; the contract and the
+# reasoning live in serialization.py.
+_json_safe = json_safe
+_dumps = dumps
+
+
 ANALYTICS_FIELDS = (
     "relative_context",     # vs Nifty 50 and the sector index, CAPM alpha, India VIX
     "quality_metrics",      # Piotroski, DuPont, cash conversion, accruals
@@ -139,7 +146,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
 
         if rate_limited is not None:
             message, retry_after = rate_limited
-            yield {"event": "error", "data": json.dumps(
+            yield {"event": "error", "data": _dumps(
                 {"detail": message, "retry_after": retry_after, "rate_limited": True})}
             return
 
@@ -165,7 +172,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
             if ticker == "INVALID":
                 yield {
                     "event": "error",
-                    "data": json.dumps({"detail": f"Could not find a valid Indian stock ticker for '{company_name}'. Please try a different name."})
+                    "data": _dumps({"detail": f"Could not find a valid Indian stock ticker for '{company_name}'. Please try a different name."})
                 }
                 return
 
@@ -174,17 +181,17 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
             if cached:
                 yield {
                     "event": "start",
-                    "data": json.dumps({"run_id": run_id, "ticker": ticker, "risk_profile": profile_name, "cached": True})
+                    "data": _dumps({"run_id": run_id, "ticker": ticker, "risk_profile": profile_name, "cached": True})
                 }
                 yield {
                     "event": "complete",
-                    "data": json.dumps(cached, default=str)
+                    "data": _dumps(cached, default=str)
                 }
                 return
 
             yield {
                 "event": "start",
-                "data": json.dumps({"run_id": run_id, "ticker": ticker, "risk_profile": profile_name, "cached": False})
+                "data": _dumps({"run_id": run_id, "ticker": ticker, "risk_profile": profile_name, "cached": False})
             }
 
             async for event in run_stock_analysis(company_name, run_id=run_id, risk_profile=profile_name):
@@ -210,7 +217,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
 
                     yield {
                         "event": "node_update",
-                        "data": json.dumps(
+                        "data": _dumps(
                             {"node": event["node"], "state": safe_state},
                             default=str,
                         ),
@@ -218,7 +225,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                 elif event["event"] == "telemetry":
                     # Phase 3: terminal telemetry event from the runner
                     run_telemetry = event.get("data") or {}
-                    yield {"event": "telemetry", "data": json.dumps(run_telemetry, default=str)}
+                    yield {"event": "telemetry", "data": _dumps(run_telemetry, default=str)}
                 elif event["event"] == "error":
                     # Forward error events; data may be a dict (e.g. data-quality abort) or a string
                     err_data = event.get("data", {})
@@ -226,16 +233,16 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
                         # Data-quality aborts are written for the user and carry
                         # no internals, so they pass through as-is.
                         run_data_quality = err_data.get("data_quality") or {}
-                        yield {"event": "error", "data": json.dumps(err_data, default=str)}
+                        yield {"event": "error", "data": _dumps(err_data, default=str)}
                     else:
                         logger.error(f"[analyze] run={run_id} ticker={ticker}: {err_data}")
-                        yield {"event": "error", "data": json.dumps(
+                        yield {"event": "error", "data": _dumps(
                             {"detail": str(err_data), "run_id": run_id})}
                     return
                 else:
                     yield {
                         "event": event["event"],
-                        "data": json.dumps({"message": event["data"]}) if isinstance(event.get("data"), str) else json.dumps(event.get("data", {}))
+                        "data": _dumps({"message": event["data"]}) if isinstance(event.get("data"), str) else _dumps(event.get("data", {}))
                     }
 
             # Cache the full result *after* the run is complete so we have telemetry to attach.
@@ -258,7 +265,7 @@ async def analyze_stock(request: Request, company_name: str, profile: str = "bal
             logger.exception(f"[analyze] run={run_id} ticker={ticker} failed")
             yield {
                 "event": "error",
-                "data": json.dumps({"detail": GENERIC_ERROR, "run_id": run_id})
+                "data": _dumps({"detail": GENERIC_ERROR, "run_id": run_id})
             }
             write_run_log(
                 run_id, ticker or "UNKNOWN", company_name,

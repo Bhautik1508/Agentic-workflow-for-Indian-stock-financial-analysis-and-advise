@@ -4,6 +4,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from serialization import dump as json_dump
+
 # Cache lives in backend/.cache (same dir layout as before)
 CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -62,4 +64,4 @@ def save_analysis_to_cache(ticker: str, report: dict) -> None:
         "report": report,
     }
     with open(cache_file, "w") as f:
-        json.dump(payload, f, default=str)
+        json_dump(payload, f)
