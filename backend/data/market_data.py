@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 NSE_SUFFIX = ".NS"
 
+# Trading sessions of price history retained. Two years: enough for a 1Y-vs-2Y
+# rolling beta, and yfinance is already asked for period="2y".
+HISTORY_SESSIONS = 500
+
 @cached_fetch("yfinance.earnings", ttl_seconds=21600)
 async def fetch_earnings_data(ticker: str) -> dict:
     """Fetch earnings calendar, EPS surprises, and proximity risk."""
@@ -575,7 +579,11 @@ async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.Dat
 
         vol_30d = returns.tail(30).std() * np.sqrt(252) * 100
         vol_90d = returns.tail(90).std() * np.sqrt(252) * 100
-        vol_1y = returns.std() * np.sqrt(252) * 100
+        # Explicitly the last 252 sessions. This was `returns.std()` over the
+        # whole series, which was exactly one year only because the history was
+        # truncated to 252 — storing two years would have silently turned this
+        # into a two-year figure still labelled "1y".
+        vol_1y = returns.tail(252).std() * np.sqrt(252) * 100
 
         # ── Beta (and correlation) against a real market benchmark
         #
@@ -587,7 +595,14 @@ async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.Dat
         benchmark_correlation = None
         beta_samples = 0
         if not n_returns.empty:
-            aligned = pd.DataFrame({"stock": stock_by_date, "nifty": n_returns}).dropna()
+            # Pinned to the last 252 sessions. Retaining two years of history
+            # for rolling beta would otherwise have silently turned this
+            # headline figure into a two-year beta while every neighbouring
+            # metric (volatility_1y, sharpe_ratio, max_drawdown_1y) stayed at
+            # one year. `rolling_beta` is where the 2Y view belongs.
+            aligned = pd.DataFrame(
+                {"stock": stock_by_date, "nifty": n_returns}
+            ).dropna().tail(252)
             beta_samples = len(aligned)
             if beta_samples < 30:
                 logger.warning(
@@ -626,6 +641,27 @@ async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.Dat
         # ── ATR (Average True Range via ta library)
         atr_14 = float(ta.volatility.AverageTrueRange(h, l, c, window=14).average_true_range().iloc[-1])
 
+        # ── Phase E: measures Sharpe and a bare drawdown cannot express ──
+        from scoring.risk_metrics import (
+            calmar_ratio, downside_deviation, liquidity_profile,
+            rolling_beta, sortino_ratio, vwap_relative, week52_percentile,
+        )
+
+        rf_annual = risk_free_rate_annual()
+        returns_1y = returns.tail(252)
+        sortino = sortino_ratio(returns_1y, rf_annual)
+        downside_dev = downside_deviation(returns_1y, rf_annual / 252)
+
+        # 1Y price return drives Calmar; the drawdown is computed just below.
+        annual_return_pct = None
+        if len(c) > 252 and float(c.iloc[-253]):
+            annual_return_pct = (float(c.iloc[-1]) - float(c.iloc[-253])) / float(c.iloc[-253]) * 100
+
+        rolling = rolling_beta(stock_by_date, n_returns)
+        liquidity = liquidity_profile(c, hist_df["Volume"]) if "Volume" in hist_df.columns \
+            else liquidity_profile(None, None)
+        vwap_rel = vwap_relative(h, l, c, hist_df["Volume"]) if "Volume" in hist_df.columns else None
+
         # ── Distance from 52-week high/low
         current_price = float(c.iloc[-1])
         high_52w = float(c.tail(252).max())
@@ -633,7 +669,20 @@ async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.Dat
         pct_from_high = round((current_price - high_52w) / high_52w * 100, 2) if high_52w else None
         pct_from_low = round((current_price - low_52w) / low_52w * 100, 2) if low_52w else None
 
+        extended_risk = {
+            "sortino_ratio": sortino,
+            "downside_deviation_pct": downside_dev,
+            "calmar_ratio": calmar_ratio(annual_return_pct, max_dd),
+            "annual_return_pct": round(annual_return_pct, 2) if annual_return_pct is not None else None,
+            "rolling_beta": rolling.to_dict(),
+            "week52_percentile": week52_percentile(current_price, high_52w, low_52w),
+            "liquidity": liquidity.to_dict(),
+            "vwap_relative_pct": vwap_rel,
+        }
+
         return {
+            **extended_risk,
+            "extended_risk": extended_risk,
             "beta": beta,
             "benchmark_correlation": benchmark_correlation,
             "benchmark_symbol": DEFAULT_BENCHMARK if beta is not None else None,
@@ -1235,7 +1284,10 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
             tmp = hist_df.reset_index()
             if 'Date' in tmp.columns:
                 tmp['Date'] = tmp['Date'].astype(str)
-            hist = tmp.to_dict("records")[-252:]
+            # Keep the full two years already fetched. It was being truncated to
+            # 252 sessions, which made rolling beta over anything longer than a
+            # year impossible even though the data was in hand.
+            hist = tmp.to_dict("records")[-HISTORY_SESSIONS:]
     except Exception as e:
         print(f"history() failed for {ticker}: {e}")
 

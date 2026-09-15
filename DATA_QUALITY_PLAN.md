@@ -305,20 +305,52 @@ can cite an accounting-quality reason. 426 tests passing (was 402).
 
 ---
 
-### Phase E — Risk & technical calculation upgrades *(2–3 days)*
+### Phase E — Risk & technical calculation upgrades ✅ *(done)*
 
-- [ ] **Sortino ratio and downside deviation** — Sharpe punishes upside volatility, which is not
-      risk. For a BUY call this is the more honest measure.
-- [ ] **Calmar ratio** (return / max drawdown) — pairs with the drawdown already computed.
-- [ ] **Rolling beta** (1Y vs 3Y) to expose a changing risk profile.
-- [ ] **Volume-profile / VWAP-relative** positioning to complement the existing indicator set
-      (RSI, MACD, ADX, Bollinger, Stochastic, OBV, ROC, ATR are already there and are adequate).
-- [ ] **52-week position as a percentile**, not just distance from high/low.
-- [ ] **Liquidity screen** — median traded value. A verdict on an illiquid small cap deserves a
-      different position size, and this is the input the existing `position_size_modifier` lacks.
+`scoring/risk_metrics.py`, surfaced in the Risk prompt.
 
-**Exit criteria:** risk reports distinguish upside from downside volatility; no risk metric depends
-on a hardcoded constant.
+- [x] **Sortino ratio and downside deviation.** Sharpe penalises an 8% jump on good results exactly
+      as hard as an 8% fall; for a BUY call that is the wrong question.
+- [x] **Calmar ratio** — a drawdown number has no denominator. "−38%" is alarming alone and
+      unremarkable beside a 60% gain.
+- [x] **Rolling beta, 1Y vs 2Y.** Made possible by retaining the two years of history already being
+      fetched and then discarded.
+- [x] **52-week position as a percentile**, not just distance from the high.
+- [x] **Liquidity screen** — median daily traded value, banded thin / moderate / deep. This is the
+      input `position_size_modifier` never had.
+- [x] **VWAP-relative positioning** over 20 sessions, complementing the existing indicator set.
+
+**Two silent-window bugs fixed, both created by retaining more history.** The price history was
+truncated to 252 sessions even though `period="2y"` was fetched. Keeping all of it would have
+quietly changed the meaning of two metrics that were only correct *because* of the truncation:
+
+- `volatility_1y` was `returns.std()` over the whole series — one year only by accident.
+- The headline `beta` used every overlapping day, so it became a **two-year** beta while
+  `volatility_1y`, `sharpe_ratio` and `max_drawdown_1y` all stayed at one year. HDFC Bank's beta
+  moved 1.25 → 1.087 purely from the window change.
+
+Both are now pinned to 252 sessions, with a test that fails if either loses its window. The 2Y view
+lives in `rolling_beta`, where it is labelled as such.
+
+**A third case caught by its own test:** with a short history, the 1Y and 2Y windows truncate to the
+same rows, so the two betas are trivially equal — which read as *"risk profile unchanged"* when it
+actually meant *"there is only one window"*. The trend is now `unknown`, and `beta_2y` is left unset
+rather than echoing a 40-session figure under a name that asserts two years.
+
+**Real output:**
+
+| | TCS | HDFC Bank |
+|---|---|---|
+| Sortino | −1.093 | −1.576 |
+| Rolling beta 1Y vs 2Y | 0.854 / 0.839 — **stable** | 1.248 / 1.087 — **rising** |
+| 52-week percentile | 22.7 | **9.6** |
+| Liquidity | ₹571 Cr/day, deep | ₹1,805 Cr/day, deep |
+
+HDFC Bank's **rising beta** is the phase justifying itself: the stock has become materially more
+market-sensitive than its longer history implies, and a single trailing beta said nothing about it.
+
+**Exit criteria met:** risk reports distinguish upside from downside volatility, and no risk metric
+depends on a hardcoded constant. 453 tests passing (was 426).
 
 ---
 

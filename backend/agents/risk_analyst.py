@@ -3,6 +3,7 @@ from agents.base_agent import get_llm, agent_with_fallback, call_llm_with_retry,
 from models.reports import RiskReport
 from data.relative_strength import render_for_prompt
 from scoring.quality_metrics import render_for_prompt as render_quality
+from scoring.risk_metrics import render_for_prompt as render_extended_risk
 from graph.state import StockAnalysisState, AgentReport, AgentStatus
 
 RISK_SYSTEM_PROMPT = """You are a Senior Risk Manager at a SEBI-registered Portfolio Management Service (PMS) firm
@@ -60,6 +61,9 @@ ATR (14-day):                ₹{atr_14}
 Debt-to-Equity:         {debt_to_equity}
 Current Ratio:          {current_ratio}
 Altman Z-Score:         {altman_z}
+
+━━━ EXTENDED RISK MEASURES ━━━
+{extended_risk}
 
 ━━━ ACCOUNTING QUALITY (computed, not inferred) ━━━
 {quality_metrics}
@@ -230,6 +234,7 @@ async def run_risk_analysis(state: StockAnalysisState) -> AgentReport:
         vix_current=format_metric(market_breadth.get("india_vix", {}).get("current")),
         relative_performance=relative_block,
         quality_metrics=render_quality(state.get("quality_metrics")),
+        extended_risk=render_extended_risk((state.get("risk_data") or {}).get("extended_risk")),
         fear_level=str_field(market_breadth, "fear_level", "normal").replace("_", " ").upper(),
         days_to_earnings=earnings.get("days_to_earnings", "unknown"),
         earnings_proximity_risk=str_field(earnings, "earnings_proximity_risk", "unknown").upper(),
