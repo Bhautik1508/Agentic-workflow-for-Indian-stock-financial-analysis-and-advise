@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Optional
 import pandas as pd
 from graph.workflow import build_workflow
@@ -10,12 +11,14 @@ from data.market_data import (
     fetch_bse_governance, fetch_nse_insider_trading, fetch_world_bank_macro,
     fetch_market_context, fetch_rbi_repo_rate, fetch_risk_data, fetch_technical_data,
     fetch_earnings_data, fetch_institutional_data, fetch_sector_peers,
-    fetch_market_breadth
+    fetch_market_breadth, fetch_index_history
 )
 from data.governance_data import fetch_governance_data
 from data.options_data import fetch_options_signals
 from data.freshness import stamp, freshness_for, collect_stale_sources, INTRADAY_STALE_AFTER_HOURS
 from llm import LLMTelemetry, set_current_telemetry, reset_current_telemetry
+
+logger = logging.getLogger(__name__)
 
 
 async def run_stock_analysis(
@@ -55,14 +58,24 @@ async def run_stock_analysis(
 
         yield {"event": "status", "data": "Compiling technical indicators, risk models & earnings data locally..."}
 
-        # Provide a mock Nifty DataFrame for Beta calculations to prevent crashing if offline
-        nifty_mock = hist_df.copy() if not hist_df.empty else None
+        # Real market benchmark for beta. This previously passed the stock's OWN
+        # history ("nifty_mock"), which made beta exactly cov(x,x)/var(x) = 1.00
+        # for every company ever analysed. If the index is unavailable we pass
+        # None, and beta comes back unset — an honest gap beats a fabricated 1.0.
+        benchmark = await fetch_index_history()
+        benchmark_rows = (benchmark or {}).get("history") or []
+        nifty_df = pd.DataFrame(benchmark_rows) if benchmark_rows else None
+        if nifty_df is None:
+            logger.warning(
+                "[runner] market benchmark unavailable — beta and correlation "
+                "will be reported as unset for this run"
+            )
 
         # Get sector for peer comparison
         sector = market_data.get("fundamental_data", {}).get("sector", "")
 
         risk_data, tech_data, earnings_data, institutional_data, peer_data, market_breadth = await asyncio.gather(
-            fetch_risk_data(ticker, hist_df, nifty_mock),
+            fetch_risk_data(ticker, hist_df, nifty_df),
             fetch_technical_data(ticker, hist_df),
             fetch_earnings_data(ticker),
             fetch_institutional_data(ticker),
@@ -93,6 +106,20 @@ async def run_stock_analysis(
         # Extract screener data from market_fetch
         screener_data = market_data.get("screener_data", {})
 
+        # ── Altman Z. The veto in scoring/vetos.py has always read
+        # `altman_z_score`; nothing ever wrote it, so the distress check was
+        # dead code and the risk prompt printed N/A on every run.
+        from scoring.altman import compute_altman_z
+
+        altman = compute_altman_z(
+            screener_data,
+            market_data.get("fundamental_data") or {},
+            sector=(market_data.get("fundamental_data") or {}).get("sector"),
+            company_name=company_name,
+        )
+        if altman.score is None:
+            logger.info(f"[altman] {ticker}: not computed — {altman.reason}")
+
         # Build comprehensive governance data
         full_gov_data = {
             **gov_screener,
@@ -111,6 +138,11 @@ async def run_stock_analysis(
             market_data.get("fundamental_data", {}) or {},
             "yfinance.fundamentals",
         )
+        fundamental_data["altman_z_score"] = altman.score
+        fundamental_data["altman_zone"] = altman.zone
+        fundamental_data["altman_variant"] = altman.variant
+        fundamental_data["altman_veto_eligible"] = altman.veto_eligible
+        fundamental_data["altman_detail"] = altman.to_dict()
         if isinstance(screener_data, dict) and screener_data:
             stamp(screener_data, "screener.in")
         if isinstance(fii_dii, dict) and fii_dii:

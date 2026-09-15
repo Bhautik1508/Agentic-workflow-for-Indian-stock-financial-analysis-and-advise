@@ -7,6 +7,9 @@ from yahooquery import Ticker, search
 import yfinance as yf
 import os
 from data.fetch_cache import cached_fetch
+import logging
+
+logger = logging.getLogger(__name__)
 
 NSE_SUFFIX = ".NS"
 
@@ -504,6 +507,37 @@ async def fetch_nse_risk_signals(symbol: str) -> dict:
         print(f"ℹ️ NSE Risk Signals blocked for {symbol}. Using fallback.")
         return {"delivery_pct_today": None, "circuit_limit": "20", "total_traded_value": None, "surveillance_flag": None}
 
+def _close_by_date(frame: "pd.DataFrame") -> "pd.Series":
+    """Close prices indexed by calendar date.
+
+    Beta and correlation join two price series. Both arrive with a positional
+    RangeIndex, so pandas aligns them by ROW NUMBER — and a stock with 250
+    trading days against an index with 247 is then offset by three, which
+    scrambles the pairing and collapses correlation toward zero.
+
+    Indexing by date makes the join mean what it says, and drops non-overlapping
+    days (holidays, suspensions) instead of silently mispairing them.
+    """
+    if frame is None or frame.empty or "Close" not in frame.columns:
+        return pd.Series(dtype=float)
+    series = pd.Series(frame["Close"].values, dtype=float)
+    raw = frame["Date"] if "Date" in frame.columns else pd.Series(frame.index)
+
+    # Take the LOCAL calendar date, by string prefix.
+    #
+    # Converting to UTC is wrong here: yfinance returns Indian daily bars stamped
+    # midnight IST ("2025-09-12 00:00:00+05:30"), and converting that to UTC
+    # gives 18:30 on the 11th, which normalises to the PREVIOUS day. Every stock
+    # date then sits one day behind the benchmark, so returns get paired across
+    # different sessions and correlation collapses toward zero.
+    #
+    # A 10-character prefix is exact for daily bars and immune to whether the
+    # source stamped a timezone at all.
+    index = pd.to_datetime(raw.astype(str).str.slice(0, 10), errors="coerce", format="%Y-%m-%d")
+    series.index = pd.Index(index)
+    return series[~series.index.isna()].dropna()
+
+
 async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.DataFrame) -> dict:
     """Computes advanced risk metrics using the offline `ta` library and Pandas logic."""
     import ta
@@ -519,20 +553,50 @@ async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.Dat
 
         # ── Volatility
         returns = c.pct_change().dropna()
-        n_returns = nifty_hist["Close"].pct_change().dropna() if nifty_hist is not None and not nifty_hist.empty else pd.Series(dtype=float)
+
+        # Date-indexed for the benchmark join (see _close_by_date). The plain
+        # `returns` above stays positional — volatility needs no alignment.
+        stock_by_date = _close_by_date(hist_df).pct_change().dropna()
+        n_returns = (
+            _close_by_date(nifty_hist).pct_change().dropna()
+            if nifty_hist is not None and not nifty_hist.empty
+            else pd.Series(dtype=float)
+        )
 
         vol_30d = returns.tail(30).std() * np.sqrt(252) * 100
         vol_90d = returns.tail(90).std() * np.sqrt(252) * 100
         vol_1y = returns.std() * np.sqrt(252) * 100
 
-        # ── Beta
+        # ── Beta (and correlation) against a real market benchmark
+        #
+        # This used to receive the stock's OWN history as the benchmark, which
+        # made every beta exactly cov(x,x)/var(x) = 1.00. The guard below exists
+        # so that regression cannot return silently: a benchmark that correlates
+        # ~perfectly with the stock is the bug, not a finding.
         beta = None
+        benchmark_correlation = None
+        beta_samples = 0
         if not n_returns.empty:
-            aligned = pd.DataFrame({"stock": returns, "nifty": n_returns}).dropna()
-            if not aligned.empty:
-                cov = aligned.cov().iloc[0, 1]
-                var_n = aligned["nifty"].var()
-                beta = round(cov / var_n, 3) if var_n != 0 else None
+            aligned = pd.DataFrame({"stock": stock_by_date, "nifty": n_returns}).dropna()
+            beta_samples = len(aligned)
+            if beta_samples < 30:
+                logger.warning(
+                    f"[risk] only {beta_samples} overlapping days with the benchmark — "
+                    f"beta left unset rather than computed on a thin sample"
+                )
+            else:
+                corr = aligned["stock"].corr(aligned["nifty"])
+                if corr is not None and corr == corr and corr > 0.999:
+                    logger.error(
+                        "[risk] benchmark series is ~identical to the stock "
+                        f"(corr={corr:.4f}) — refusing to report beta. "
+                        "A real index series was not supplied."
+                    )
+                else:
+                    var_n = aligned["nifty"].var()
+                    if var_n:
+                        beta = round(aligned.cov().iloc[0, 1] / var_n, 3)
+                        benchmark_correlation = round(float(corr), 3) if corr == corr else None
 
         # ── Max Drawdown (1 year)
         prices_1y = c.tail(252)
@@ -540,8 +604,9 @@ async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.Dat
         drawdown = (prices_1y - rolling_max) / rolling_max
         max_dd = round(drawdown.min() * 100, 2)
 
-        # ── Sharpe Ratio (1 year, risk-free = 6.5% India 10Y yield)
-        rf_daily = 0.065 / 252
+        # ── Sharpe Ratio (1 year), using the single sourced risk-free rate
+        # rather than a literal buried in the calculation.
+        rf_daily = risk_free_rate_annual() / 252
         excess = returns.tail(252) - rf_daily
         sharpe = round(excess.mean() / excess.std() * np.sqrt(252), 3) if excess.std() else None
 
@@ -560,6 +625,10 @@ async def fetch_risk_data(ticker: str, hist_df: pd.DataFrame, nifty_hist: pd.Dat
 
         return {
             "beta": beta,
+            "benchmark_correlation": benchmark_correlation,
+            "benchmark_symbol": DEFAULT_BENCHMARK if beta is not None else None,
+            "beta_sample_days": beta_samples,
+            "risk_free_rate_pct": round(risk_free_rate_annual() * 100, 2),
             "volatility_30d": round(vol_30d, 2),
             "volatility_90d": round(vol_90d, 2),
             "volatility_1y": round(vol_1y, 2),
@@ -755,8 +824,17 @@ def fetch_market_context() -> dict:
 
 @cached_fetch("rbi.repo_rate", ttl_seconds=86400)
 def fetch_rbi_repo_rate() -> dict:
-    """Returns static baseline (live scraping DBIE is complex/fragile)"""
-    return {"repo_rate": 6.50, "last_change": "Feb 2025", "stance": "neutral"}
+    """Policy rate. Static baseline — live DBIE scraping is Phase C work.
+
+    Reads the same single constant the Sharpe calculation uses, so the macro
+    agent and the risk maths can no longer disagree about the rate.
+    """
+    return {
+        "repo_rate": risk_free_rate_pct(),
+        "last_change": "Feb 2025",
+        "stance": "neutral",
+        "source": "static_policy_rate_proxy",
+    }
 
 @cached_fetch("bse.governance", ttl_seconds=43200)
 async def fetch_bse_governance(bse_code: str) -> dict:
@@ -1010,6 +1088,74 @@ def _extract_fundamentals_from_screener(screener_data: dict) -> dict:
         fundamentals["debt_to_equity"] = total_debt / total_equity
 
     return fundamentals
+
+
+# ── Risk-free rate ────────────────────────────────────────────────────────────
+# One number, one place. It was previously written twice: a literal 0.065 buried
+# inside the Sharpe calculation and a separate hardcoded 6.50 in
+# fetch_rbi_repo_rate(), free to drift apart.
+#
+# Honest about what this is: the RBI policy repo rate as a risk-free PROXY, and
+# static. Scraping RBI's DBIE for a live 10Y G-sec yield is the real fix and is
+# Phase C work. Until then it is overridable without a redeploy via
+# RISK_FREE_RATE_PCT, so it can be corrected when the policy rate moves.
+DEFAULT_RISK_FREE_RATE_PCT = 6.50
+
+
+def risk_free_rate_pct() -> float:
+    """Annual risk-free proxy as a percentage, e.g. 6.5."""
+    raw = (os.environ.get("RISK_FREE_RATE_PCT") or "").strip()
+    if raw:
+        try:
+            value = float(raw)
+            if 0.0 <= value <= 25.0:      # sanity band; a typo must not warp Sharpe
+                return value
+            logger.warning(f"[macro] RISK_FREE_RATE_PCT={value} out of range; using default")
+        except ValueError:
+            logger.warning(f"[macro] RISK_FREE_RATE_PCT={raw!r} is not a number; using default")
+    return DEFAULT_RISK_FREE_RATE_PCT
+
+
+def risk_free_rate_annual() -> float:
+    """Same value as a decimal, e.g. 0.065."""
+    return risk_free_rate_pct() / 100.0
+
+
+# Benchmark for beta / relative strength. Nifty 50 via yfinance was verified
+# working (247 rows). NSE's allIndices endpoint is the cross-check/fallback.
+DEFAULT_BENCHMARK = "^NSEI"
+
+
+@cached_fetch("yfinance.index_history", ttl_seconds=3600)
+async def fetch_index_history(symbol: str = DEFAULT_BENCHMARK, period: str = "1y") -> dict:
+    """OHLC history for a market index.
+
+    One series shared by every analysis, so the fetch cache reduces this to a
+    single call per trading day for the whole app.
+
+    Returns {} on failure rather than raising — the caller must be able to tell
+    "no benchmark" apart from "a benchmark", because the alternative is what
+    this codebase did before: substitute the stock's own history and report a
+    beta of exactly 1.00 for every company.
+    """
+    try:
+        import yfinance as yf
+
+        frame = await asyncio.to_thread(
+            lambda: yf.Ticker(symbol).history(period=period)
+        )
+        if frame is None or frame.empty:
+            logger.warning(f"[benchmark] {symbol} returned no rows")
+            return {}
+        history = [
+            {"Date": idx.strftime("%Y-%m-%d"), "Close": float(row["Close"])}
+            for idx, row in frame.iterrows()
+            if row.get("Close") == row.get("Close")     # drop NaN
+        ]
+        return {"symbol": symbol, "period": period, "rows": len(history), "history": history}
+    except Exception as exc:
+        logger.warning(f"[benchmark] {symbol} fetch failed: {str(exc)[:120]}")
+        return {}
 
 
 @cached_fetch("yfinance.market_data", ttl_seconds=3600)

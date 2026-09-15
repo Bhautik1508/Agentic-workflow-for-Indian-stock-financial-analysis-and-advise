@@ -328,11 +328,40 @@ def test_no_red_flags_no_veto():
     assert v.reasons == []
 
 
-def test_altman_z_below_threshold_triggers_sell():
-    v = evaluate_vetos(fundamental_data={"altman_z_score": 1.2})
+def test_altman_distress_zone_triggers_sell():
+    """The veto now keys off the model's own zone rather than a bare number.
+
+    It previously compared against 1.8 — the distress line of the ORIGINAL 1968
+    Z-score — while the field was never populated at all. The emerging-market
+    Z'' now computed puts distress below 1.1, so a raw 1.8 comparison would flag
+    healthy companies."""
+    v = evaluate_vetos(fundamental_data={
+        "altman_z_score": 0.9, "altman_zone": "distress", "altman_veto_eligible": True,
+    })
     assert v.triggered is True
     assert v.forced_verdict == "SELL"
     assert any("Altman" in r for r in v.reasons)
+
+
+def test_altman_grey_zone_does_not_veto():
+    v = evaluate_vetos(fundamental_data={
+        "altman_z_score": 1.9, "altman_zone": "grey", "altman_veto_eligible": True,
+    })
+    assert v.triggered is False
+
+
+def test_altman_does_not_veto_when_not_eligible():
+    """Financials and unknown sectors must not force a SELL: a Z-score is not
+    meaningful for a bank, and a wrong forced SELL is worse than no signal."""
+    v = evaluate_vetos(fundamental_data={
+        "altman_z_score": 0.4, "altman_zone": "distress", "altman_veto_eligible": False,
+    })
+    assert v.triggered is False
+
+
+def test_altman_absent_does_not_veto():
+    v = evaluate_vetos(fundamental_data={"altman_z_score": None, "altman_zone": None})
+    assert v.triggered is False
 
 
 def test_promoter_pledge_triggers_sell():
@@ -364,7 +393,8 @@ def test_risk_score_below_three_triggers_sell():
 
 def test_multiple_severe_vetos_escalate_to_strong_sell():
     v = evaluate_vetos(
-        fundamental_data={"altman_z_score": 1.0},      # +2
+        fundamental_data={"altman_z_score": 0.8, "altman_zone": "distress",
+                          "altman_veto_eligible": True},               # +2
         governance_data={"promoter_pledge_pct": 70},   # +2
     )
     assert v.triggered is True

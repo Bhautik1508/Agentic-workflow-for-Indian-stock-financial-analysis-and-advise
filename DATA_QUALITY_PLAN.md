@@ -99,28 +99,62 @@ So the app already has much of the missing data. It just does not put it where t
 
 ## 3. Phase-wise plan
 
-### Phase A — Stop reporting fabricated numbers *(~1 day)*
+### Phase A — Stop reporting fabricated numbers ✅ *(done)*
 
-> Nothing else on this list improves the output as much as removing three numbers that are
-> confidently wrong.
+- [x] **Real benchmark, real beta.** `fetch_index_history("^NSEI")` added and cached by trading day
+      (one fetch shared by every analysis). `runner.py` no longer passes `nifty_mock`.
+- [x] **Beta is `None` when it cannot be measured** — never 1.0. Three guards: no benchmark, fewer
+      than 30 overlapping sessions, or a benchmark correlating >0.999 with the stock (which is the
+      old bug, not a finding — it logs `ERROR` and refuses).
+- [x] **Altman Z computed** (`scoring/altman.py`), emerging-market Z'' variant, written into
+      `fundamental_data` so the veto finally has something to read.
+- [x] **One sourced risk-free rate.** The literal `0.065` inside Sharpe and the separate hardcoded
+      `6.50` in `fetch_rbi_repo_rate()` are now a single `risk_free_rate_pct()`, overridable via
+      `RISK_FREE_RATE_PCT` and range-checked so a typo cannot warp every Sharpe ratio.
 
-- [ ] **Fetch a real benchmark and fix beta.** Add `fetch_index_history("^NSEI")` (yfinance,
-      ✅ verified: 247 rows). Cache it with the existing `@cached_fetch` — it is one series shared by
-      every analysis, so the cost is one fetch per trading day for the whole app.
-      Replace `nifty_mock` in `runner.py`.
-- [ ] **When the benchmark is genuinely unavailable, return `beta: None`** — never 1.0. The
-      degraded-report machinery already handles missing values; a null is honest, a 1.0 is a lie.
-      Have the risk prompt say "unavailable" rather than print a number.
-- [ ] **Compute Altman Z** (`scoring/altman.py`) from Screener balance-sheet rows, using the
-      emerging-market variant where inputs allow. Write it into `fundamental_data["altman_z_score"]`
-      so the existing veto finally has something to read. Return `None` when inputs are missing —
-      a veto that cannot be evaluated must not silently pass.
-- [ ] **Use the live risk-free rate** from `fetch_rbi_repo_rate()` (or the 10Y G-sec) in the Sharpe
-      calculation instead of the hardcoded 6.5%.
+**A second bug surfaced while verifying the first.** With the real index wired in, beta came back
+at 0.13 / 0.02 with near-zero correlation — impossible for large caps. Two causes, both found only
+because the numbers were checked against expectation rather than assumed fixed:
 
-**Exit criteria:** beta varies across stocks and matches a hand-check for two names; Altman Z is a
-number for large caps and `None` where inputs are absent; no hardcoded macro constants in the risk
-math.
+1. Both price series carried a positional `RangeIndex`, so pandas joined them **by row number**.
+   A stock with 252 sessions against an index with 247 was offset by five.
+2. After indexing by date, yfinance stamps Indian daily bars midnight **IST**
+   (`2025-09-12 00:00:00+05:30`); converting to UTC gives 18:30 on the 11th, which normalises to
+   **the previous day**. Every stock date sat one day behind the benchmark.
+
+Fixed by joining on the local calendar date. Overlap went 187 → 246 sessions.
+
+**Result — beta before and after:**
+
+| Ticker | Before | After | Correlation |
+|---|---|---|---|
+| TCS | 1.00 | **0.85** | 0.39 |
+| HDFC Bank | 1.00 | **1.25** | 0.77 |
+| ITC | 1.00 | **0.64** | 0.42 |
+| Infosys | 1.00 | **0.77** | 0.34 |
+| Reliance | 1.00 | **0.91** | 0.59 |
+
+Verified end to end — the risk reports now read `Beta 0.85` for TCS and `Beta 1.25` for HDFC Bank.
+A defensive bank at 0.64 and a private bank at 1.25 is the shape you would expect; 1.00 for
+everything never was.
+
+**Altman Z across sectors:**
+
+| Ticker | Sector | Z'' | Zone | Veto-eligible |
+|---|---|---|---|---|
+| TCS | Technology | 7.14 | safe | yes |
+| ITC | Consumer Defensive | 8.75 | safe | yes |
+| Reliance | Energy | 2.06 | grey | yes |
+| HDFC Bank | Financial Services | — | — | **no — financials excluded** |
+
+The veto now keys off the model's own zone. It previously compared against **1.8**, the distress
+line of the *original* 1968 Z-score, while computing nothing at all — and had the field been
+populated with a Z'', that threshold would have flagged healthy companies, since Z'' distress
+begins below 1.1.
+
+**Exit criteria met.** Beta varies across stocks and matches hand-checks; Altman Z is a number for
+non-financials and `None` where it is not meaningful; no hardcoded macro constant remains in the
+risk maths. 339 tests passing (was 309).
 
 ---
 

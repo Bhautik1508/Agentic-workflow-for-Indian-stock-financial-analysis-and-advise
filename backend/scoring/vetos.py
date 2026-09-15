@@ -50,10 +50,25 @@ def evaluate_vetos(
     nse_data = nse_data or {}
     risk_report = risk_report or {}
 
-    # 1. Altman Z-score — bankruptcy risk threshold
+    # 1. Altman Z — bankruptcy distress.
+    #
+    # The threshold is the one belonging to the variant actually computed. This
+    # used to hardcode 1.8, the distress line of the ORIGINAL 1968 model, while
+    # nothing wrote the field at all. The emerging-market Z'' now computed puts
+    # distress below 1.1; comparing a Z'' score to 1.8 would flag healthy
+    # companies as distressed.
+    #
+    # `altman_veto_eligible` is False for financials and for unknown sectors,
+    # where a Z-score is not meaningful and a forced SELL would be wrong.
     altman = _safe_float(fundamental_data.get("altman_z_score"))
-    if altman is not None and altman < 1.8:
-        reasons.append(f"Altman Z-score {altman:.2f} (< 1.8) — distressed-company territory")
+    altman_zone = fundamental_data.get("altman_zone")
+    altman_eligible = fundamental_data.get("altman_veto_eligible", True)
+    if altman is not None and altman_eligible and altman_zone == "distress":
+        variant = fundamental_data.get("altman_variant", "z")
+        reasons.append(
+            f"Altman Z-score {altman:.2f} ({variant}) in the distress zone — "
+            f"balance-sheet stress"
+        )
         severity += 2
 
     # 2. Promoter pledging — looked up under a few common keys
