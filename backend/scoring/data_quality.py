@@ -54,9 +54,20 @@ def _env_threshold(name: str, default: float) -> float:
 # Calibrated so a Render-IP analysis with only ~20% fundamentals (overall ~0.44)
 # can still proceed; only structurally-broken runs (overall < 0.30) are blocked.
 # Override with DATA_QUALITY_ABORT_THRESHOLD env var.
-DEFAULT_ABORT_THRESHOLD = _env_threshold("DATA_QUALITY_ABORT_THRESHOLD", 0.30)
+# Raised from 0.30 now that the fundamentals chain actually delivers.
+#
+# 0.30 was calibrated when production ran at 0.44 overall / 0.20 fundamental,
+# because yfinance is rate-limited from cloud IPs and Screener data was being
+# fetched but never mapped in. With the per-field merge, Screener ALONE reaches
+# 0.9 on non-financials, so a ticker below 0.5 now means genuinely absent data
+# rather than a plumbing failure — and should stop the run instead of quietly
+# producing a verdict the analysts will hallucinate around.
+#
+# Banks legitimately sit lower (~0.7: no debt_to_equity or ebitda_margin in a
+# bank's P&L format), so the abort line stays well below them.
+DEFAULT_ABORT_THRESHOLD = _env_threshold("DATA_QUALITY_ABORT_THRESHOLD", 0.50)
 # Below this we still proceed but flag the verdict as low-data confidence.
-DEFAULT_WARN_THRESHOLD = _env_threshold("DATA_QUALITY_WARN_THRESHOLD", 0.50)
+DEFAULT_WARN_THRESHOLD = _env_threshold("DATA_QUALITY_WARN_THRESHOLD", 0.70)
 
 
 @dataclass

@@ -110,16 +110,23 @@ def test_missing_half_fundamentals_warns_but_does_not_abort():
     assert "fundamental_data" in q.sparse_sources or q.sparse_sources == []  # may or may not warn
 
 
-def test_render_ip_partial_fundamentals_proceed_with_warnings():
-    """Regression: yfinance on Render's cloud IPs only returns ~2 of 10
-    fundamental fields even for blue chips. Overall completeness lands at
-    ~0.44 (0.7 × 0.2 + 0.3 × 1.0). The verdict must still be producible —
-    just flagged as low-data — so users get a verdict instead of an abort."""
+def test_two_of_ten_fundamentals_now_aborts():
+    """Contract change, deliberate.
+
+    This previously asserted that 2-of-10 fundamentals (overall 0.44) must still
+    produce a verdict, because yfinance is rate-limited from Render's IPs and
+    0.44 was simply *normal* — aborting would have blocked every production run.
+
+    That accommodation existed to work around broken plumbing: Screener.in was
+    being scraped successfully on the same run and never mapped into
+    fundamental_data. With the per-field merge, Screener alone reaches 0.9 on
+    non-financials, so 0.44 no longer means "rate-limited" — it means both
+    sources genuinely returned nothing, and a verdict built on two fields is
+    exactly what the gate exists to stop."""
     state = {
         "fundamental_data": {
             "pe_ratio": 22.0,
             "debt_to_equity": 0.31,
-            # 8 fields rate-limited away
         },
         "price_data": {
             "current_price": 1437.9,
@@ -129,10 +136,29 @@ def test_render_ip_partial_fundamentals_proceed_with_warnings():
     }
     q = evaluate_data_quality(state)
     assert q.fundamental_completeness == 0.2
-    assert q.price_completeness == 1.0
     assert q.overall_completeness == 0.44
-    assert q.abort is False, "Render-IP partial data must not block the verdict"
-    assert "fundamental_data" in q.sparse_sources, "Sparse fund data must be surfaced as a warning"
+    assert q.abort is True, "with the merge in place, 0.44 means real data absence"
+    assert q.abort_reason
+
+
+def test_bank_profile_does_not_abort():
+    """Banks legitimately lack debt_to_equity and ebitda_margin in a bank P&L
+    format, landing near 0.7 from Screener alone. The abort line must sit well
+    below that or every bank becomes unanalysable."""
+    state = {
+        "fundamental_data": {
+            "pe_ratio": 18.0, "market_cap": 1.2e13, "sector": "Financial Services",
+            "current_ratio": None, "roe": 0.17, "ebitda_margin": None,
+            "profit_margins": 0.22, "revenue_growth": 0.11, "free_cashflow": 5.0e10,
+            "debt_to_equity": None,
+        },
+        "price_data": {
+            "current_price": 1600.0, "week_52_high": 1800.0, "week_52_low": 1400.0,
+        },
+    }
+    q = evaluate_data_quality(state)
+    assert q.fundamental_completeness >= 0.6
+    assert q.abort is False, "a bank's normal field profile must remain analysable"
 
 
 def test_almost_empty_state_aborts_with_honest_reason():

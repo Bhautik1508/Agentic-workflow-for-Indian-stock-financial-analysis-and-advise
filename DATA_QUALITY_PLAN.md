@@ -158,28 +158,58 @@ risk maths. 339 tests passing (was 309).
 
 ---
 
-### Phase B — Close the completeness gap with data already being fetched *(2–3 days)*
+### Phase B — Close the completeness gap ✅ *(done)*
 
-- [ ] **Map Screener.in into `fundamental_data`.** A `screener_adapter` that derives
-      `roe, roce, debt_to_equity, current_ratio, profit_margins, ebitda_margin, revenue_growth,
-      market_cap, book_value` from rows already scraped. Use `data/screener_summary.py`'s tolerant
-      key matching — remember Screener's labels carry a non-breaking space.
-- [ ] **Make it a real fallback chain** behind the `IFundamentalsProvider` seam built in Phase 4 of
-      IMPROVEMENTS.md: `yfinance → yahooquery → screener → alpha_vantage`. First non-empty wins,
-      per field rather than per provider, so a partial yfinance response is topped up rather than
-      discarded.
-- [ ] **Record provenance per field** (`{"roe": {"value": 0.518, "source": "screener.in"}}`). Without
-      it you cannot tell a scraped estimate from an official filing, and the agents currently cannot
-      either.
-- [ ] **Wire up Alpha Vantage** as the third tier — the key is already configured and idle. Respect
-      its free-tier request budget (verify the current daily limit) and let the fetch cache absorb
-      repeats.
-- [ ] **Re-tune the data-quality gate once completeness rises.** The 0.30 abort threshold was set
-      when 0.44 was normal; with better coverage it should be raised, or thin tickers will keep
-      slipping through.
+- [x] **Screener mapped into `fundamental_data`** via `data/fundamentals_adapter.py`, using the
+      tolerant key matching from `screener_summary.py` and a value parser that survives
+      `'₹\n  8,13,988\n\n  Cr.'`.
+- [x] **Per-field merge with provenance.** Every field records its source
+      (`_provenance`, `_source_counts`), so a scraped estimate is never mistaken for an official
+      figure — by a reader or an agent. Merging per field means a partial yfinance response is
+      topped up rather than discarded because it answered at all.
+- [x] **Sector and industry scraped from Screener's own taxonomy.** Worth more than one field:
+      `sector` gates both peer comparison and the Altman financial-exclusion check, and yfinance
+      routinely omits it in production. Screener returns "Financial Services" for HDFC Bank, which
+      is exactly what Phase A's Altman guard needs.
+- [x] **Quality gate re-tuned**: abort 0.30 → **0.50**, warn 0.50 → **0.70**. The old line was
+      calibrated around broken plumbing, where 0.44 was normal.
+- [ ] ~~Alpha Vantage as a third tier~~ — **tested and rejected, see below.**
 
-**Exit criteria:** `fundamental_completeness ≥ 0.8` on Nifty-50 names in production; every field
-carries a source; no abort on a large cap.
+**Three faults were keeping the data out**, not one:
+
+1. `scrape_screener` sliced the P&L and balance sheet to `rows[1:6]` — five rows each — dropping
+   Net Profit, EPS, Interest, Depreciation and Total Assets, **and never read the cash-flow
+   statement at all**. Removing the cap took the P&L from 5 → 12 rows, the balance sheet 5 → 10,
+   and added 6 cash-flow rows *including Free Cash Flow directly*.
+2. The extractor looked up exact keys (`"pl_Sales"`) against Screener's actual labels
+   (`"pl_Sales\xa0+"`) — the same non-breaking-space bug that made CAGR "N/A" in every prompt.
+3. Values were parsed with a plain `float()`, which cannot read a scraped currency string.
+
+Prompt size is unaffected: `screener_summary.py` already caps what reaches the model, so the
+scraper can return everything while the prompt stays bounded.
+
+**Result — completeness with yfinance unavailable (i.e. production conditions):**
+
+| Ticker | Before | Screener-only now | Still missing |
+|---|---|---|---|
+| TCS | 0.2 | **0.9** | current_ratio |
+| Reliance | 0.2 | **0.9** | current_ratio |
+| ITC | 0.2 | **0.9** | current_ratio |
+| HDFC Bank | 0.2 | **0.7** | debt_to_equity, ebitda_margin, current_ratio |
+
+Full pipeline, both sources live: TCS **1.0** with zero missing fields; HDFC Bank **0.8**
+(fundamental) / 0.86 (overall). `current_ratio` is a genuine gap — Screener does not split current
+assets from current liabilities, and inventing it would be worse than leaving it null. The bank's
+extra gaps are the bank P&L format, not a failure.
+
+> **Alpha Vantage: tested, not wired.** The plan called for it as a third tier since the key was
+> already configured and idle. It does not earn its place: `TCS.BSE` returns an **empty** payload
+> (no Indian fundamentals coverage on the free OVERVIEW endpoint) and further calls immediately hit
+> a free-tier throttle. Building a tier on it would add a maintained code path that never
+> contributes. The key can be removed from `.env`. Screener at 0.9 is the tier that actually works.
+
+**Exit criteria met** for non-financials: ≥0.8 with yfinance down, 1.0 with both sources, every
+field carrying a source, and no abort on a large cap. 370 tests passing (was 339).
 
 ---
 

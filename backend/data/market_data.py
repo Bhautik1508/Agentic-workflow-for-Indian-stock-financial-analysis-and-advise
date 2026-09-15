@@ -411,8 +411,40 @@ def scrape_screener(company_slug: str) -> dict:
         
         soup = BeautifulSoup(resp.text, "html.parser")
         result = {}
-        
-        # Extract company overview ratios (Market Cap, P/E, ROCE, etc.)
+
+        def _harvest(section_id: str, prefix: str) -> None:
+            """Pull every row of a Screener statement table.
+
+            The P&L and balance sheet were previously sliced to `rows[1:6]` —
+            five rows each. That silently dropped Net Profit, EPS, Interest,
+            Depreciation, Tax and Total Assets, which is why profit_margins,
+            earnings_growth and the Altman inputs could never be derived. Row
+            order is Screener's, not ours, so a fixed cap is arbitrary.
+
+            Prompt size is unaffected: `data/screener_summary.py` already
+            selects and truncates what actually reaches the model.
+            """
+            section = soup.find("section", {"id": section_id})
+            if not section:
+                return
+            table = section.find("table")
+            if not table:
+                return
+            rows = table.find_all("tr")
+            if not rows:
+                return
+            years = [th.text.strip() for th in rows[0].find_all("th")][1:]
+            for row in rows[1:]:
+                cells = row.find_all("td")
+                if not cells:
+                    continue
+                key = cells[0].text.strip()
+                if not key:
+                    continue
+                values = [c.text.strip() for c in cells[1:]]
+                result[f"{prefix}{key}"] = dict(zip(years, values))
+
+        # Company overview ratios (Market Cap, P/E, ROCE, ...)
         ratios_section = soup.find("ul", {"id": "top-ratios"})
         if ratios_section:
             for li in ratios_section.find_all("li"):
@@ -421,52 +453,30 @@ def scrape_screener(company_slug: str) -> dict:
                 if name_el and value_el:
                     result[name_el.text.strip()] = value_el.text.strip()
 
-        
-        # Extract 10-year P&L summary (Revenue, Net Profit, EPS)
-        pl_section = soup.find("section", {"id": "profit-loss"})
-        if pl_section:
-            table = pl_section.find("table")
-            if table:
-                rows = table.find_all("tr")
-                if rows:
-                    years = [th.text.strip() for th in rows[0].find_all("th")][1:]
-                    for row in rows[1:6]:  # First 5 rows of P&L
-                        cells = row.find_all("td")
-                        if cells:
-                            key = cells[0].text.strip()
-                            values = [c.text.strip() for c in cells[1:]]
-                            result[f"pl_{key}"] = dict(zip(years, values))
-        
-        # Extract key ratios: ROCE, ROE trend
-        ratios_table_section = soup.find("section", {"id": "ratios"})
-        if ratios_table_section:
-            table = ratios_table_section.find("table")
-            if table:
-                rows = table.find_all("tr")
-                if rows:
-                    years = [th.text.strip() for th in rows[0].find_all("th")][1:]
-                    for row in rows[1:]:
-                        cells = row.find_all("td")
-                        if cells:
-                            key = cells[0].text.strip()
-                            values = [c.text.strip() for c in cells[1:]]
-                            result[f"ratio_{key}"] = dict(zip(years, values))
-        
-        # Extract balance sheet summary
-        bs_section = soup.find("section", {"id": "balance-sheet"})
-        if bs_section:
-            table = bs_section.find("table")
-            if table:
-                rows = table.find_all("tr")
-                if rows:
-                    years = [th.text.strip() for th in rows[0].find_all("th")][1:]
-                    for row in rows[1:6]:
-                        cells = row.find_all("td")
-                        if cells:
-                            key = cells[0].text.strip()
-                            values = [c.text.strip() for c in cells[1:]]
-                            result[f"bs_{key}"] = dict(zip(years, values))
-        
+        # Sector / industry taxonomy. Screener links these under #peers as
+        # /market/<sector>/<...>/<industry>, broad first and most specific last.
+        #
+        # Worth more than one extra field: `sector` gates the peer comparison AND
+        # the Altman financial-exclusion check, which cannot fire while the
+        # sector is unknown — and yfinance frequently omits it in production.
+        peers_section = soup.find(id="peers")
+        if peers_section:
+            market_links = [
+                a.get_text(strip=True)
+                for a in peers_section.find_all("a", href=True)
+                if a["href"].startswith("/market/") and a.get_text(strip=True)
+            ]
+            if market_links:
+                result["sector"] = market_links[0]
+                result["industry"] = market_links[-1]
+
+        _harvest("profit-loss", "pl_")
+        _harvest("ratios", "ratio_")
+        _harvest("balance-sheet", "bs_")
+        # Never scraped before — the only free source of operating cash flow,
+        # and therefore of free cash flow and any cash-conversion check.
+        _harvest("cash-flow", "cf_")
+
         return result
     except Exception as e:
         print(f"Screener scrape failed for {company_slug}: {e}")
@@ -1217,7 +1227,15 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
     # ── STEP 4: Screener.in data (always works, not Yahoo-dependent) ──
     c_slug = ticker.split(".")[0]
     screener_data = scrape_screener(c_slug)
-    screener_fundamentals = _extract_fundamentals_from_screener(screener_data)
+    # Tolerant key matching + robust value parsing. The previous extractor used
+    # exact keys ("pl_Sales") against Screener's actual labels ("pl_Sales\xa0+")
+    # and plain float() against values like '₹\n 8,13,988\n\n Cr.', so most
+    # fields silently came back None.
+    from data.fundamentals_adapter import (
+        extract_from_screener, merge_fundamentals, scale_crore_fields,
+    )
+
+    screener_fundamentals = scale_crore_fields(extract_from_screener(screener_data))
 
     # ── STEP 5: Merge fundamentals (Yahoo info preferred, Screener fallback) ──
     def _pick(yahoo_key, screener_key=None):
@@ -1309,6 +1327,26 @@ async def fetch_all_market_data(ticker: str) -> Dict[str, Any]:
             "sector_peers": peer_data.get("peers", []) if isinstance(peer_data, dict) else peer_data,
         },
         "screener_data": screener_data
+    }
+
+    # ── STEP 6: per-field top-up + provenance ──
+    #
+    # Merging per FIELD, not per provider: a partial yfinance response (common,
+    # since it is rate-limited from cloud IPs) is topped up from Screener rather
+    # than the whole source being discarded because it answered at all.
+    #
+    # Provenance is recorded so a scraped estimate is never mistaken for an
+    # official figure — by a reader or by an agent.
+    yahoo_fields = {k: v for k, v in result["fundamental_data"].items() if v is not None}
+    merged, provenance = merge_fundamentals([
+        ("yfinance", yahoo_fields),
+        ("screener.in", screener_fundamentals),
+    ])
+    result["fundamental_data"].update(merged)
+    result["fundamental_data"]["_provenance"] = provenance
+    result["fundamental_data"]["_source_counts"] = {
+        source: sum(1 for v in provenance.values() if v == source)
+        for source in sorted(set(provenance.values()))
     }
 
     # ── Validate: we MUST have at least price or history ──
