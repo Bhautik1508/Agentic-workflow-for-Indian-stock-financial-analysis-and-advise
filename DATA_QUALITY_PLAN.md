@@ -402,6 +402,90 @@ horizon, which is calendar time, not engineering. 472 tests passing (was 453).
 
 ---
 
+### Phase G — Remaining items *(open)*
+
+Everything still outstanding, from both this plan and [IMPROVEMENTS.md](IMPROVEMENTS.md). Split by
+who can actually do it, because several need dashboard access I do not have.
+
+---
+
+#### G1. 🔴 Five phases of analytics never reach the UI
+
+`api/routes.py` forwards only `*_report` keys and `JUDGE_FIELDS`. `relative_context`,
+`quality_metrics` and `extended_risk` are **not in either**, so the frontend has no knowledge of
+Phases C, D or E. Verified: no file under `frontend/src/` references `piotroski`, `sortino`,
+`rolling_beta` or `relative_context`.
+
+So a user still cannot see that HDFC Bank underperformed its own sector by 26 points, that its beta
+is rising, or that Reliance's ROE is leverage-driven. The agents reason with all of it; the reader
+sees none of it.
+
+- [ ] Add the three payloads to the SSE `node_update` filter.
+- [ ] Extend `ComparisonRow` with index/sector excess (the component already exists for exactly
+      this).
+- [ ] A quality strip on the Financial card: Piotroski *n*/8, DuPont driver, cash conversion.
+- [ ] Rolling-beta and liquidity lines on the Risk card.
+
+**This is the largest remaining engineering item**, and the one with the most visible payoff.
+
+#### G2. 🔴 Run logs do not survive on Render — Phase F cannot accumulate evidence
+
+Phase F's whole purpose is verdicts accruing until there are ~50 to score. Render's free tier has an
+**ephemeral filesystem**: `.runlog/` is wiped on every deploy and restart. Locally the logs persist;
+in production they never will.
+
+Left as is, the backtest will read 1–2 verdicts forever and the engine stays unmeasured.
+
+- [ ] Persist run logs off-box. `SUPABASE_URL` / `SUPABASE_KEY` are already in `.env.example` and
+      unused — a single `run_logs` table would do it. Alternatives: Upstash Redis (also already
+      stubbed), or object storage.
+- [ ] Until then, treat local runs as the only evidence source and say so.
+
+#### G3. 🟠 Vercel production is still serving a pre-Phase-3 bundle
+
+Checked again just now: the production alias has no `RunStats` code. Builds are happening as
+previews; nothing is being promoted. Users are on a frontend from before the cost strip, the
+rate-limit message and the URL-encoding fix.
+
+- [ ] Promote the newest deployment, then set **Production Branch = `main`** so it stops recurring.
+- [ ] Set Node version to **22** (`package.json` declares `engines: >=22.6`; a Node 20 project will
+      fail the build).
+
+---
+
+#### Needs a dashboard I cannot reach
+
+| Item | Where | Effect while undone |
+|---|---|---|
+| `LLM_PRICING_JSON` | Render env | Cost strip reads "not set" instead of money |
+| `DEBUG_API_TOKEN` | Render env | `/api/debug/data` stays 404 (safe default) |
+| Secret-scanning **validity checks** + **non-provider patterns** | GitHub web UI — the REST API accepts and silently ignores both | No alert when a leaked key is still live |
+| `GOOGLE_API_KEY` / `GROQ_API_KEY` as repo secrets | GitHub → Secrets | Nightly golden-set job cannot run; cron stays commented |
+
+---
+
+#### Blocked on data that does not exist
+
+- [ ] **`current_ratio`** — the one field between 0.9 and 1.0 coverage. Screener does not split
+      current assets from current liabilities. Needs a different free source, or accept the gap.
+- [ ] **Promoter pledge trend** — pledge *history* is not in the shareholding scrape; a trend
+      cannot come from one snapshot.
+
+#### Blocked on time, not engineering
+
+- [ ] **Pillar-weight tuning** — bar is 50 scored verdicts at 1M. Currently 6, all from the retired
+      `legacy` engine. Depends on **G2** being solved first.
+
+#### Housekeeping
+
+- [ ] Rebuild the venv on **Python 3.11** to match `runtime.txt` (only 3.9 and 3.12 are installed
+      here). The lazy-semaphore fix removed the practical consequence, so this is cosmetic — but it
+      is why local runs emit end-of-life warnings and noisy asyncio teardown tracebacks.
+- [ ] Remove `ALPHA_VANTAGE_KEY` from `.env` — tested in Phase B, returns empty for Indian symbols.
+- [ ] `brew install gitleaks` for the stronger pre-commit layer (the built-in patterns work without it).
+
+---
+
 ## 4. Where this leaves the project
 
 Phases A–F are built. The sequencing held up: A removed three fabricated numbers, B quadrupled the
