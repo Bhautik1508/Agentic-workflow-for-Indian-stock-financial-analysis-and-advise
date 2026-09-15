@@ -68,7 +68,7 @@ So the app already has much of the missing data. It just does not put it where t
 
 - `ALPHA_VANTAGE_KEY` is set in `.env` and **used nowhere in the codebase**.
 - The Sharpe risk-free rate is hardcoded to `0.065`
-  ([market_data.py:546](backend/data/market_data.py#L544)) — while `fetch_rbi_repo_rate()` already
+  ([market_data.py:544](backend/data/market_data.py#L544)) — while `fetch_rbi_repo_rate()` already
   fetches the live policy rate and is passed to the macro agent.
 
 ---
