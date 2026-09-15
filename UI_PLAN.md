@@ -450,6 +450,32 @@ them.
 
    3 rows, not 251 — the §6 duplicate-fetch cost drops with it.
 
+**Follow-on, fixed after the phase:** the target and stop `ReferenceLine` labels used
+`position: 'right'`, which is exactly where the right-oriented Y axis sits. The text landed on the
+price ticks (`Stop ₹1,638` over `₹1647`) and was clipped by the chart edge (`Target ₹2,71`, last
+digit gone). Removed rather than repositioned: no fixed position is collision-proof across
+arbitrary data, and the legend directly above already names both values, colour-matched to the
+dashes.
+
+**🔴 Still open, found while checking that fix — the price chart does not draw the price.**
+
+[PriceChart.tsx:209](frontend/src/components/analysis/PriceChart.tsx#L209) renders the series as
+`<Bar dataKey="close">`. That is a **column chart of closing prices**, drawn from the axis floor up
+to the close — not a candlestick. Consequences:
+
+- Each bar's *length* is distance from an arbitrary axis minimum, so it encodes nothing. Change the
+  Y domain and every bar changes height while the data is identical.
+- Open, high and low are fetched, computed, and shown in the tooltip, but **never drawn**. The
+  chart cannot show a range, a gap, or a wick.
+- It only *looks* like a candlestick chart when the Y domain happens to be much wider than the
+  price range — which is what the target overlay was accidentally doing. With a target 60% above
+  spot the domain stretches, the bars shrink, and they read as candles. On a stock whose target is
+  near spot the same code renders a solid wall of bars.
+
+Either draw real candles (a custom shape using O/H/L/C) or drop to a close line with the range as
+a band. Both are honest; the current one is a chart whose most prominent visual dimension is
+meaningless.
+
 *Exit check met.* Printed brief verified end-to-end: verdict, comparison tiles, chart, all five
 pillar scores with bars, all five analyst cards, quality panel, disclaimer.
 
@@ -464,7 +490,7 @@ lows. A fresh run returns 6.9. Cache entries expire within the hour.
 
 ---
 
-### Phase U3 — Surface what is already on the wire
+### Phase U3 — Surface what is already on the wire ✅ BUILT
 No backend work except where noted; every field already arrives.
 
 1. **Catalysts** — render `key_catalysts` in the hero beside Strengths and Risks. It is the
@@ -479,6 +505,105 @@ No backend work except where noted; every field already arrives.
    `QualityPanel`, `CounterFactualPanel`, `RunStats`. *First confirm the run-log payload carries
    `analytics` and `counter_factual`; if it does not, that is a backend change and belongs here
    rather than being quietly skipped.*
+
+---
+
+**All five built. Checking item 5 first, as instructed, turned up more than expected.**
+
+**`analytics` was not stored at all**, so `write_run_log` gained an `analytics` argument and
+`/api/verdict/{id}` now returns it under the same key the SSE `complete` event uses — the frozen
+page hydrates through the identical path as a live run.
+
+**`_scrub_reports` was also dropping `data_table` and `data`.** The scrub exists to keep bulky
+upstream blobs out of the log, which is right, but `data_table` is display content — a handful of
+label/value/signal rows — and its loss made every analyst card on a permalink read *"No signals
+returned"*. Four scalars from `data` (`pe_premium_discount_pct`, `beta_category`, `trend`,
+`macro_environment`) feed comparison tiles. Both are now kept, `data` through an explicit
+whitelist. The existing test asserting the raw blob is not stored still passes unmodified: when
+nothing survives the whitelist the key is omitted entirely, so "the blob is not stored" stays
+literally true rather than becoming "stored, but empty".
+
+**🔴 And `counter_factual` had never worked anywhere.** Not the run log — *anywhere*. No cache
+entry, no run log, and not the live page either. Phase 5's "What would change this verdict?" had
+never rendered once.
+
+`judge_node` returns it. `JUDGE_FIELDS` streams it. But **LangGraph merges a node's return into
+state by key and silently discards keys the state schema does not declare**, and
+`StockAnalysisState` declared none of these five:
+
+```
+counter_factual      judge_score      score_attribution
+strongest_pillar     weakest_pillar
+```
+
+Nothing errored. The judge computed all five and they evaporated between the judge and the
+stream. Declaring them in `state.py` fixed it; a fresh run now returns:
+
+```
+counter_factual: band BUY, score 6.17, downgrade at < 5.5, upgrade at >= 7.0, 5 sensitivities
+judge_score 6.5 | strongest_pillar financial | weakest_pillar technical
+```
+
+The regression test asserts the *whole* set — every `JUDGE_FIELDS` entry must be declared in
+`StockAnalysisState` — rather than the five, because the next field added will fail the same
+silent way.
+
+**Rendering honestly, forced by what the data turned out to be.** Titan came back as a BUY with
+`reward_to_risk = -9.62`. Since `rr = upside / downside` with `downside > 0`, a negative means the
+target sits *below* spot — confirmed: target ₹3,397.68 against a spot of ~₹4,855.86, with the stop
+₹4,704.36 *above* the target. So:
+
+- reward:risk renders as a ratio only when it is one; otherwise it says **"Target at or below
+  spot"**.
+- the upside percentage beside the target was hardcoded `text-[#15803D]`, printing **−30.0% in the
+  gain colour**. Now red when negative.
+
+**🔴 Out of scope, needs its own fix:** those targets are incoherent. A BUY whose target is 30%
+below spot and whose stop sits above its target is not a rendering problem — the blend in
+`grounded_pricing` is dragged down by a fundamental anchor of ₹1,491 against technical ₹5,304,
+analyst ₹5,421 and LLM ₹5,600. The UI now states this honestly instead of dressing it up, but the
+number itself belongs in a pricing-logic phase.
+
+*Verified:* catalysts render in a 3-column grid; the data-quality chip carries `aria-expanded` and
+opens to `Missing: current_ratio · Sparse sources: news`; a failed analyst card opens to its error
+text; the permalink shows the comparison tiles, accounting quality, risk profile, run stats,
+analyst signals and the counter-factual. Tiles whose data is genuinely absent stay absent.
+
+**One process note:** the first browser check reported catalysts and run stats as missing. Both
+were present. `heading-eyebrow` sets `text-transform: uppercase` and `innerText` returns the
+*rendered* text, so the assertions were matching "Catalysts" against a DOM saying "CATALYSTS".
+Verify the verification before believing a failure.
+
+---
+
+#### U3 addendum — the counter-factual panel was too much, once it finally rendered
+
+Making it work exposed that the per-pillar table was the weakest thing on the page:
+
+- It is precise about something a reader cannot observe. Nobody watches a "Financial score"; they
+  watch earnings, news and price.
+- Rows routinely say nothing can happen — "Drops to 0.0 (−6.8 pts)" beside "Cannot upgrade alone"
+  spends a line to report irrelevance.
+- Pillars with no sensitivity in either direction were filtered out **silently**, so the table was
+  quietly incomplete (four rows where there are five pillars).
+- The current-score column duplicates `ScoreBreakdown` directly above it.
+
+Collapsed rather than deleted — it is genuinely useful when interrogating a verdict you distrust.
+The default view now leads with the two things worth reading:
+
+```
+Current 5.40 → HOLD   Downgrade to SELL at < 4.50   Upgrade to BUY at ≥ 6.00
+Margin 0.90 points before the band changes
+Most fragile pillar: Financial — a 3.0-point fall would downgrade this to SELL.
+[ Show per-pillar sensitivity ⌄ ]
+STRUCTURAL TRIGGERS (OVERRIDE SCORE)
+  Risk score must stay ≥ 3.0; currently 6.5 (buffer 3.5).
+```
+
+The margin answers the question a reader actually has — *how close is this call?* — and the
+structural triggers are the strongest content in the panel, because `Altman Z < 1.8` and
+`promoter pledge > 50%` are real-world conditions that override the score outright. The expanded
+table now also states how many pillars are omitted and why, instead of leaving a silent gap.
 
 ---
 

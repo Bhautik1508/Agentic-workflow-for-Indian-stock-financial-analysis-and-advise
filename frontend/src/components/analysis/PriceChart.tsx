@@ -229,19 +229,21 @@ export function PriceChart({ ticker, targetPrice = null, stopLoss = null }: Pric
                                 connectNulls
                             />
 
-                            {/* Target & stop overlays */}
+                            {/* Target & stop overlays.
+                                Deliberately unlabelled. `position: 'right'` put the
+                                text exactly where the right-oriented Y axis lives, so
+                                it sat on top of the price ticks and was clipped by the
+                                chart edge ("Target ₹2,71"). No fixed position is
+                                collision-proof across arbitrary data — a label anywhere
+                                inside the plot can land on a candle — and both values
+                                are already named in the legend directly above, colour
+                                matched to the line. */}
                             {targetPrice != null && (
                                 <ReferenceLine
                                     y={targetPrice}
                                     stroke={COLORS.target}
                                     strokeDasharray="4 3"
                                     strokeWidth={1}
-                                    label={{
-                                        value: `Target ${inr(targetPrice)}`,
-                                        position: 'right',
-                                        fill: COLORS.target,
-                                        fontSize: 10,
-                                    }}
                                 />
                             )}
                             {stopLoss != null && (
@@ -250,12 +252,6 @@ export function PriceChart({ ticker, targetPrice = null, stopLoss = null }: Pric
                                     stroke={COLORS.stop}
                                     strokeDasharray="4 3"
                                     strokeWidth={1}
-                                    label={{
-                                        value: `Stop ${inr(stopLoss)}`,
-                                        position: 'right',
-                                        fill: COLORS.stop,
-                                        fontSize: 10,
-                                    }}
                                 />
                             )}
 
