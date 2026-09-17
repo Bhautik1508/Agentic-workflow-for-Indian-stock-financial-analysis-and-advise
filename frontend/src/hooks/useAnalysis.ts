@@ -32,6 +32,9 @@ export interface GroundedTargets {
     upside_pct: number | null;
     downside_pct: number | null;
     reward_to_risk: number | null;
+    /** The price the target and stop were computed against. Absent on runs
+     *  cached before it was recorded. */
+    current_price?: number | null;
     method: string;
     components: Record<string, number | null>;
 }

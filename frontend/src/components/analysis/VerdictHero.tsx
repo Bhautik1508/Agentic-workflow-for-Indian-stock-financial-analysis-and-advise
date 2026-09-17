@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, ArrowDown, Minus, ChevronsUp, ChevronsDown, AlertOctagon, Loader2, Database, Clock, RotateCw, Zap, ChevronDown } from 'lucide-react';
 import type { AnalysisError, FinalDecision } from '@/hooks/useAnalysis';
-import { inr, pct } from '@/lib/format';
+import { inr } from '@/lib/format';
 import { topStrengths, topRisks } from '@/lib/strengths';
 import type { AgentReport } from '@/hooks/useAnalysis';
 
@@ -30,11 +30,11 @@ const VERDICT_CONFIG: Record<Verdict, {
     border: string;
     dotBg: string;
 }> = {
-    STRONG_BUY: { label: 'Strong Buy', icon: ChevronsUp,   fg: 'text-[#166534]', bg: 'bg-[#DCFCE7]', border: 'border-[#86EFAC]', dotBg: 'bg-[#15803D]' },
-    BUY:        { label: 'Buy',        icon: ArrowUp,      fg: 'text-[#15803D]', bg: 'bg-[#ECFDF3]', border: 'border-[#A7E3BF]', dotBg: 'bg-[#15803D]' },
-    HOLD:       { label: 'Hold',       icon: Minus,        fg: 'text-[#A16207]', bg: 'bg-[#FEF7E0]', border: 'border-[#E8C56A]', dotBg: 'bg-[#A16207]' },
-    SELL:       { label: 'Sell',       icon: ArrowDown,    fg: 'text-[#B91C1C]', bg: 'bg-[#FEE7E7]', border: 'border-[#F0A0A0]', dotBg: 'bg-[#B91C1C]' },
-    STRONG_SELL:{ label: 'Strong Sell',icon: ChevronsDown, fg: 'text-[#991B1B]', bg: 'bg-[#FCD7D7]', border: 'border-[#E8898E]', dotBg: 'bg-[#991B1B]' },
+    STRONG_BUY: { label: 'Strong Buy', icon: ChevronsUp,   fg: 'text-strong-buy', bg: 'bg-strong-buy-soft', border: 'border-strong-buy-line', dotBg: 'bg-buy' },
+    BUY:        { label: 'Buy',        icon: ArrowUp,      fg: 'text-buy', bg: 'bg-buy-soft', border: 'border-buy-line', dotBg: 'bg-buy' },
+    HOLD:       { label: 'Hold',       icon: Minus,        fg: 'text-hold', bg: 'bg-hold-soft', border: 'border-hold-line', dotBg: 'bg-hold' },
+    SELL:       { label: 'Sell',       icon: ArrowDown,    fg: 'text-sell', bg: 'bg-sell-soft', border: 'border-sell-line', dotBg: 'bg-sell' },
+    STRONG_SELL:{ label: 'Strong Sell',icon: ChevronsDown, fg: 'text-strong-sell', bg: 'bg-strong-sell-soft', border: 'border-strong-sell-line', dotBg: 'bg-strong-sell' },
 };
 
 /**
@@ -49,7 +49,7 @@ function ProgressPanel({ message }: { message: string }) {
     return (
         <section className="card-paper px-6 py-8 md:px-10 md:py-10">
             <div className="flex items-center gap-3 mb-5">
-                <Loader2 size={18} className="text-[#1E40AF] animate-spin" />
+                <Loader2 size={18} className="text-accent animate-spin" />
                 <span className="heading-eyebrow">Verdict in progress</span>
             </div>
 
@@ -57,15 +57,15 @@ function ProgressPanel({ message }: { message: string }) {
                 role="status"
                 aria-live="polite"
                 aria-atomic="true"
-                className="text-body text-[#4A4D55] mb-6 min-h-[1.5em]"
+                className="text-body text-ink-2 mb-6 min-h-[1.5em]"
             >
                 {message}
             </p>
 
             <div className="space-y-3" aria-hidden="true">
-                <div className="h-9 w-48 rounded skeleton-shimmer bg-[#F2F1EB]" />
-                <div className="h-4 w-3/4 rounded skeleton-shimmer bg-[#F2F1EB]" />
-                <div className="h-4 w-2/3 rounded skeleton-shimmer bg-[#F2F1EB]" />
+                <div className="h-9 w-48 rounded skeleton-shimmer bg-paper-2" />
+                <div className="h-4 w-3/4 rounded skeleton-shimmer bg-paper-2" />
+                <div className="h-4 w-2/3 rounded skeleton-shimmer bg-paper-2" />
             </div>
         </section>
     );
@@ -100,24 +100,24 @@ function ErrorPanel({ error, onRetry }: { error: AnalysisError; onRetry?: () => 
     return (
         <section className="card-paper px-6 py-8 md:px-10 md:py-10" role="alert">
             <div className="flex items-center gap-3 mb-4">
-                <AlertOctagon size={18} className="text-[#B91C1C]" />
+                <AlertOctagon size={18} className="text-sell" />
                 <span className="heading-eyebrow">
                     {error.rateLimited ? 'Rate limited' : 'Analysis could not complete'}
                 </span>
             </div>
 
-            <p className="text-lede text-[#1A1B1E] max-w-2xl mb-5">{error.detail}</p>
+            <p className="text-lede text-ink max-w-2xl mb-5">{error.detail}</p>
 
             {(missing.length > 0 || sparse.length > 0) && (
-                <div className="mb-5 pt-4 border-t border-[#E5E3DB] space-y-2">
+                <div className="mb-5 pt-4 border-t border-rule space-y-2">
                     {missing.length > 0 && (
-                        <p className="text-small text-[#4A4D55]">
-                            <span className="text-[#7A7F88]">Missing:</span> {missing.join(' \u00b7 ')}
+                        <p className="text-small text-ink-2">
+                            <span className="text-ink-3">Missing:</span> {missing.join(' \u00b7 ')}
                         </p>
                     )}
                     {sparse.length > 0 && (
-                        <p className="text-small text-[#4A4D55]">
-                            <span className="text-[#7A7F88]">Sparse sources:</span> {sparse.join(' \u00b7 ')}
+                        <p className="text-small text-ink-2">
+                            <span className="text-ink-3">Sparse sources:</span> {sparse.join(' \u00b7 ')}
                         </p>
                     )}
                 </div>
@@ -128,8 +128,8 @@ function ErrorPanel({ error, onRetry }: { error: AnalysisError; onRetry?: () => 
                     onClick={onRetry}
                     disabled={held}
                     className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3 py-1.5 rounded-md border
-                        border-[#1E40AF] bg-[#F0F4FB] text-[#1E40AF] transition cursor-pointer
-                        hover:bg-[#E5EBF8] disabled:opacity-50 disabled:cursor-not-allowed"
+                        border-accent bg-accent-tint text-accent transition cursor-pointer
+                        hover:bg-accent-soft disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <RotateCw size={14} />
                     {held ? `Try again in ${humanWait(waitLeft)}` : 'Try again'}
@@ -156,6 +156,20 @@ function humanWait(sec: number): string {
     const h = Math.floor(m / 60);
     const rm = m % 60;
     return rm ? `${h}h ${rm}m` : `${h}h`;
+}
+
+/** One labelled figure with a plain sentence saying what it means. */
+function Fact({ label, value, note, tone }: {
+    label: string; value: string; note?: string; tone?: 'good' | 'bad';
+}) {
+    const colour = tone === 'good' ? 'text-buy' : tone === 'bad' ? 'text-sell' : 'text-ink';
+    return (
+        <div className="min-w-0">
+            <p className="heading-eyebrow text-[10px] mb-1">{label}</p>
+            <p className={`font-serif text-[20px] leading-tight font-tnum ${colour}`}>{value}</p>
+            {note && <p className="text-micro mt-1 leading-snug">{note}</p>}
+        </div>
+    );
 }
 
 const UNKNOWN_FAILURE: AnalysisError = {
@@ -196,14 +210,32 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
     const confidenceNorm = confidenceRaw > 1 ? confidenceRaw / 100 : confidenceRaw;
     const confidencePct = Math.round(confidenceNorm * 100);
 
+    // `target` and `upside` are read but deliberately NOT displayed.
+    //
+    // The target is a mean of two anchors measured in different units: a
+    // sector-median-multiple fair value (answering "is this expensive?") and a
+    // technical resistance level (answering "where is the next ceiling?"). The
+    // average of those is not a worse estimate of either — it is an estimate of
+    // nothing, and for any premium-multiple stock it lands far below the market
+    // price. Titan: (1,491 + 5,304) / 2 = 3,398 against a price of 4,909, while
+    // the analyst consensus (5,422) and the model's own number (5,600) were
+    // discarded by the blend.
+    //
+    // They are kept here only to derive `spot` on runs cached before the
+    // backend sent it. Re-introduce the display when reconcile_targets stops
+    // averaging incompatible anchors — not before.
     const target = decision.target_price ?? null;
     const stop = decision.stop_loss ?? null;
     const upside = decision.grounded_targets?.upside_pct ?? null;
     const downside = decision.grounded_targets?.downside_pct ?? null;
     const positionSize = decision.grounded_targets?.position_size_modifier ?? null;
-    // The number a reader is already computing in their head from the target
-    // and the stop. It was calculated and then never shown.
-    const rewardToRisk = decision.grounded_targets?.reward_to_risk ?? null;
+    // The anchor every other figure is relative to. Sent by the backend now;
+    // older cached runs predate it, so fall back to deriving it from the target
+    // and its percentage rather than showing nothing.
+    const spot = decision.grounded_targets?.current_price
+        ?? (target != null && upside != null && upside !== -100
+            ? target / (1 + upside / 100)
+            : null);
     const horizonRaw = (decision as { time_horizon?: string }).time_horizon;
     const horizon = horizonRaw === 'short_term' ? 'short term'
                   : horizonRaw === 'medium_term' ? '6 months'
@@ -230,70 +262,79 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
             >
                 {/* ── Veto banner ── */}
                 {decision.veto?.triggered && (
-                    <div className="mb-5 -mx-6 md:-mx-10 px-6 md:px-10 py-3 border-y border-[#F0A0A0] bg-[#FEE7E7] flex items-start gap-2">
-                        <AlertOctagon size={15} className="text-[#B91C1C] mt-0.5 shrink-0" />
-                        <p className="text-small text-[#7A1F1F]">
+                    <div className="mb-5 -mx-6 md:-mx-10 px-6 md:px-10 py-3 border-y border-sell-line bg-sell-soft flex items-start gap-2">
+                        <AlertOctagon size={15} className="text-sell mt-0.5 shrink-0" />
+                        <p className="text-small text-veto-ink">
                             <span className="font-semibold">Veto fired — </span>
                             {decision.veto.reasons.slice(0, 2).join(' · ')}
                         </p>
                     </div>
                 )}
 
-                {/* ── Verdict line: dot + label + price target + horizon ── */}
-                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2 mb-2">
-                    <div className="flex items-center gap-3">
-                        <span className={`w-2 h-2 rounded-full ${cfg.dotBg}`} />
-                        <h1 className={`heading-display ${cfg.fg} flex items-center gap-2`}>
-                            <VerdictIcon size={28} className="opacity-80" strokeWidth={2.5} />
-                            {cfg.label}
-                        </h1>
-                    </div>
-                    {target && upside != null && (
-                        <p className="font-serif text-[22px] text-[#1A1B1E]">
-                            <span className="text-[#7A7F88] font-sans text-[14px] mr-2">to</span>
-                            <span className="font-tnum">{inr(target)}</span>
-                            {/* Not unconditionally green: the blended target can land
-                                BELOW spot, and a -30% "upside" printed in the gain
-                                colour reads as a gain. */}
-                            <span className={`ml-2 font-sans text-[14px] font-medium font-tnum ${upside >= 0 ? 'text-[#15803D]' : 'text-[#B91C1C]'}`}>
-                                {pct(upside, { signed: true })}
-                            </span>
-                            {horizon && <span className="text-[#7A7F88] font-sans text-[14px] ml-2">in {horizon}</span>}
-                        </p>
+                {/* ── Verdict ── */}
+                <div className="flex items-center gap-3 mb-5">
+                    <span className={`w-2 h-2 rounded-full ${cfg.dotBg}`} />
+                    <h1 className={`heading-display ${cfg.fg} flex items-center gap-2`}>
+                        <VerdictIcon size={28} className="opacity-80" strokeWidth={2.5} />
+                        {cfg.label}
+                    </h1>
+                </div>
+
+                {/* ── The numbers, labelled and anchored ──
+                    This was a run-on chip row: "to Rs841 -16.4% · Conviction 80% ·
+                    Stop Rs967 -3.9% · Size 0.80x". Three problems. It never showed
+                    what the stock costs today, so every percentage hung off an
+                    invisible anchor. "Stop", "spot" and "conviction" are trade-desk
+                    words. And "0.80x" gave no clue what it was 0.8 of. Each figure
+                    now carries its own label and a plain sentence saying what it
+                    means. */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5 pb-6 mb-6 border-b border-rule">
+                    {spot != null && (
+                        <Fact
+                            label="Trading now"
+                            value={inr(spot)}
+                            note="Today's market price. Everything here is measured from it."
+                        />
+                    )}
+                    {stop != null && (
+                        <Fact
+                            label="Stop loss"
+                            value={inr(stop)}
+                            note={`Sell here to cap the loss${downside != null ? ` · ${downside.toFixed(1)}% below today` : ''}`}
+                        />
+                    )}
+                    <Fact
+                        label="Confidence"
+                        value={`${confidencePct}%`}
+                        note="How strongly the five analysts agreed with this call"
+                    />
+                    {positionSize != null && (
+                        <Fact
+                            label="Position size"
+                            value={`${positionSize.toFixed(2)}×`}
+                            note={
+                                positionSize < 0.95
+                                    ? "Smaller than a normal position — this stock moves a lot"
+                                    : positionSize > 1.05
+                                        ? 'Larger than a normal position — this stock is steady'
+                                        : 'A normal-sized position for this profile'
+                            }
+                        />
                     )}
                 </div>
 
-                {/* ── Conviction + Stop + Position size + Profile + Quality chips ── */}
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-small text-[#4A4D55] mb-6">
-                    <span className="font-tnum"><span className="text-[#7A7F88]">Conviction</span> {confidencePct}%</span>
-                    {stop != null && (
-                        <span className="font-tnum">
-                            <span className="text-[#7A7F88]">Stop</span> {inr(stop)}
-                            {downside != null && <span className="text-[#B91C1C] ml-1">−{downside.toFixed(1)}%</span>}
+                {/* ── Meta: profile, data completeness, staleness ── */}
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-small text-ink-2 mb-6">
+                    {horizon && (
+                        <span>
+                            <span className="text-ink-3">Time horizon</span> {horizon}
                         </span>
-                    )}
-                    {/* reward_to_risk is upside/downside with downside > 0, so a
-                        non-positive value means the target sits at or below spot.
-                        "-9.6 : 1" is not a reward-to-risk a reader can use; say
-                        what it actually means instead. */}
-                    {rewardToRisk != null && rewardToRisk > 0 && (
-                        <span className="font-tnum">
-                            <span className="text-[#7A7F88]">Reward:risk</span>{' '}
-                            <span className={rewardToRisk >= 2 ? 'text-[#15803D]' : rewardToRisk < 1 ? 'text-[#A16207]' : ''}>
-                                {rewardToRisk.toFixed(1)} : 1
-                            </span>
-                        </span>
-                    )}
-                    {rewardToRisk != null && rewardToRisk <= 0 && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-[#B91C1C]">
-                            <AlertOctagon size={11} /> Target at or below spot
-                        </span>
-                    )}
-                    {positionSize != null && (
-                        <span className="font-tnum"><span className="text-[#7A7F88]">Size</span> {positionSize.toFixed(2)}×</span>
                     )}
                     {decision.risk_profile && (
-                        <span className="px-1.5 py-0.5 rounded border border-[#E5E3DB] bg-[#F2F1EB] text-[11px] font-mono uppercase tracking-wider text-[#4A4D55]">
+                        <span
+                            className="px-1.5 py-0.5 rounded border border-rule bg-paper-2 text-[11px] font-mono uppercase tracking-wider text-ink-2"
+                            title="The investor profile this run was weighted for"
+                        >
                             {decision.risk_profile}
                         </span>
                     )}
@@ -306,7 +347,7 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                         />
                     )}
                     {decision.stale_sources?.slice(0, 2).map((s, i) => (
-                        <span key={i} className="inline-flex items-center gap-1 text-[11px] text-[#A16207]">
+                        <span key={i} className="inline-flex items-center gap-1 text-[11px] text-hold" title="This source was older than the freshness window">
                             <Clock size={11} /> {s}
                         </span>
                     ))}
@@ -314,19 +355,19 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
 
                 {/* ── What the completeness figure is actually missing ── */}
                 {showQuality && dqHasDetail && (
-                    <div className="-mt-3 mb-6 px-3 py-2.5 rounded-md border border-[#E5E3DB] bg-[#F8F7F2] space-y-1.5">
+                    <div className="-mt-3 mb-6 px-3 py-2.5 rounded-md border border-rule bg-paper-hover space-y-1.5">
                         {dqMissing.length > 0 && (
-                            <p className="text-small text-[#4A4D55]">
-                                <span className="text-[#7A7F88]">Missing:</span> {dqMissing.join(' · ')}
+                            <p className="text-small text-ink-2">
+                                <span className="text-ink-3">Missing:</span> {dqMissing.join(' · ')}
                             </p>
                         )}
                         {dqSparse.length > 0 && (
-                            <p className="text-small text-[#4A4D55]">
-                                <span className="text-[#7A7F88]">Sparse sources:</span> {dqSparse.join(' · ')}
+                            <p className="text-small text-ink-2">
+                                <span className="text-ink-3">Sparse sources:</span> {dqSparse.join(' · ')}
                             </p>
                         )}
                         {dqWarnings.map((w, i) => (
-                            <p key={i} className="text-small text-[#A16207]">{w}</p>
+                            <p key={i} className="text-small text-hold">{w}</p>
                         ))}
                     </div>
                 )}
@@ -339,19 +380,22 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                 )}
 
                 {/* ── Strengths + Risks columns ── */}
-                <div className={`grid grid-cols-1 md:grid-cols-2 ${catalysts.length > 0 ? 'lg:grid-cols-3' : ''} gap-x-10 gap-y-6 pt-6 border-t border-[#E5E3DB]`}>
+                <div className={`grid grid-cols-1 md:grid-cols-2 ${catalysts.length > 0 ? 'lg:grid-cols-3' : ''} gap-x-10 gap-y-6 pt-6 border-t border-rule`}>
                     <div>
-                        <h3 className="heading-eyebrow mb-3">Strengths</h3>
+                        <h3 className="heading-eyebrow mb-1">Strengths</h3>
+                        <p className="text-micro mb-3">The pillars that scored highest, out of 10</p>
                         {strengths.length === 0 ? (
-                            <p className="text-small text-[#7A7F88]">No pillar above 6.0 yet.</p>
+                            <p className="text-small text-ink-3">No pillar above 6.0 yet.</p>
                         ) : (
                             <ul className="space-y-2">
                                 {strengths.map((h, i) => (
                                     <li key={i} className="flex gap-3">
-                                        <span className="font-tnum text-[#15803D] font-medium w-12 shrink-0">{h.score.toFixed(1)}</span>
+                                        <span className="font-tnum text-buy font-medium w-12 shrink-0">
+                                            {h.score.toFixed(1)}<span className="text-ink-3 font-normal text-[11px]">/10</span>
+                                        </span>
                                         <div className="min-w-0">
-                                            <span className="text-small text-[#1A1B1E] font-medium">{h.pillar}</span>
-                                            <span className="text-small text-[#4A4D55]"> — {h.text}</span>
+                                            <span className="text-small text-ink font-medium">{h.pillar}</span>
+                                            <span className="text-small text-ink-2"> — {h.text}</span>
                                         </div>
                                     </li>
                                 ))}
@@ -359,25 +403,28 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                         )}
                     </div>
                     <div>
-                        <h3 className="heading-eyebrow mb-3">Risks</h3>
+                        <h3 className="heading-eyebrow mb-1">Risks</h3>
+                        <p className="text-micro mb-3">The pillars that scored lowest, or raised a flag</p>
                         {risks.length === 0 && (decision.key_risks?.length ?? 0) === 0 ? (
-                            <p className="text-small text-[#7A7F88]">No flagged risks.</p>
+                            <p className="text-small text-ink-3">No flagged risks.</p>
                         ) : (
                             <ul className="space-y-2">
                                 {risks.length > 0
                                     ? risks.map((h, i) => (
                                         <li key={i} className="flex gap-3">
-                                            <span className="font-tnum text-[#B91C1C] font-medium w-12 shrink-0">{h.score.toFixed(1)}</span>
+                                            <span className="font-tnum text-sell font-medium w-12 shrink-0">
+                                                {h.score.toFixed(1)}<span className="text-ink-3 font-normal text-[11px]">/10</span>
+                                            </span>
                                             <div className="min-w-0">
-                                                <span className="text-small text-[#1A1B1E] font-medium">{h.pillar}</span>
-                                                <span className="text-small text-[#4A4D55]"> — {h.text}</span>
+                                                <span className="text-small text-ink font-medium">{h.pillar}</span>
+                                                <span className="text-small text-ink-2"> — {h.text}</span>
                                             </div>
                                         </li>
                                     ))
                                     : decision.key_risks?.slice(0, 3).map((r, i) => (
                                         <li key={i} className="flex gap-3">
-                                            <span className="text-[#B91C1C] w-3 shrink-0">·</span>
-                                            <span className="text-small text-[#4A4D55]">{r}</span>
+                                            <span className="text-sell w-3 shrink-0">·</span>
+                                            <span className="text-small text-ink-2">{r}</span>
                                         </li>
                                     ))
                                 }
@@ -389,12 +436,13 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
                         and nothing rendered them. */}
                     {catalysts.length > 0 && (
                         <div>
-                            <h3 className="heading-eyebrow mb-3">Catalysts</h3>
+                            <h3 className="heading-eyebrow mb-1">Catalysts</h3>
+                            <p className="text-micro mb-3">What could move this in the thesis&rsquo;s favour</p>
                             <ul className="space-y-2">
                                 {catalysts.map((c, i) => (
                                     <li key={i} className="flex gap-3">
-                                        <Zap size={12} className="text-[#A16207] mt-1 shrink-0" />
-                                        <span className="text-small text-[#4A4D55]">{c}</span>
+                                        <Zap size={12} className="text-hold mt-1 shrink-0" />
+                                        <span className="text-small text-ink-2">{c}</span>
                                     </li>
                                 ))}
                             </ul>
@@ -404,9 +452,10 @@ export function VerdictHero({ decision, agents, status, message, error, onRetry 
 
                 {/* ── Dissent (small) ── */}
                 {decision.dissent_summary && (
-                    <div className="mt-6 pt-5 border-t border-[#E5E3DB]">
-                        <h4 className="heading-eyebrow mb-2">Dissent</h4>
-                        <p className="text-small text-[#4A4D55] italic">{decision.dissent_summary}</p>
+                    <div className="mt-6 pt-5 border-t border-rule">
+                        <h4 className="heading-eyebrow mb-1">Dissent</h4>
+                        <p className="text-micro mb-2">Where the analysts disagreed with the final call</p>
+                        <p className="text-small text-ink-2 italic">{decision.dissent_summary}</p>
                     </div>
                 )}
             </motion.section>
@@ -428,9 +477,9 @@ function DataQualityChip({ overall, expandable, expanded, onToggle }: {
     onToggle?: () => void;
 }) {
     const p = Math.round((overall ?? 0) * 100);
-    const tone = p >= 85 ? 'text-[#15803D]'
-              : p >= 70 ? 'text-[#A16207]'
-              : 'text-[#B91C1C]';
+    const tone = p >= 85 ? 'text-buy'
+              : p >= 70 ? 'text-hold'
+              : 'text-sell';
     const body = <><Database size={11} /> Data {p}%</>;
 
     if (!expandable) {

@@ -91,8 +91,8 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                                     disabled={state.status === 'analyzing' || state.status === 'initializing'}
                                     className={`px-3 py-1.5 text-[12px] font-medium rounded-md border transition
                                         ${active
-                                            ? 'border-[#1E40AF] bg-[#F0F4FB] text-[#1E40AF]'
-                                            : 'border-[#E5E3DB] bg-white text-[#4A4D55] hover:border-[#C6C3B8]'}
+                                            ? 'border-accent bg-accent-tint text-accent'
+                                            : 'border-rule bg-white text-ink-2 hover:border-rule-strong'}
                                         disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
                                     title={opt.tagline}
                                 >
@@ -128,7 +128,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
                         // `start` event (e.g. RELIANCE.NS); fall back to the URL name
                         // until the backend has resolved it.
                         ticker={state.ticker ?? decodedName}
-                        targetPrice={state.final_decision?.target_price ?? null}
+                        // Target deliberately not passed: the blended value is a
+                        // mean of two anchors in different units and is not shown
+                        // anywhere. PriceChart still supports the overlay, so this
+                        // is one line to restore once the blend is fixed.
                         stopLoss={state.final_decision?.stop_loss ?? null}
                     />
                 </section>

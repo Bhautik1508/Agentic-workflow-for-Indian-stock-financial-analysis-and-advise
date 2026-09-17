@@ -607,7 +607,7 @@ table now also states how many pillars are omitted and why, instead of leaving a
 
 ---
 
-### Phase U4 — Tokens, then contrast
+### Phase U4 — Tokens, then contrast ✅ BUILT
 Sequenced deliberately: the migration is what makes the contrast fix a two-line change instead of
 a seventy-site sweep. Doing U4b first means doing it twice.
 
@@ -623,6 +623,166 @@ Finish by re-styling `HistorySidebar` for the light theme — including that dea
 3. Add a `prefers-reduced-motion` block that disables shimmer, pulse, and Framer transitions.
 
 *Exit check:* recompute all ratios; no text token below 4.5:1 on `#FFFFFF` or `#FAFAF7`.
+
+---
+
+**U4a — done.** 337 hex literals (not 299; the count grew across U1–U3) replaced across 20 files,
+**0 remaining**. Eight tokens were missing and are now defined rather than left as one-offs: the
+five verdict chip borders, `--color-paper-hover`, `--color-veto-ink`, `--color-warn`. No composite
+arbitrary values contained a hex, so the substitution was safe to do mechanically.
+
+Token resolution was verified by measuring a fresh single-class element per token, not by trusting
+the build — a mistyped token name produces *no rule*, which compiles silently and renders
+unstyled. All twelve resolve exactly, including the two new ones.
+
+`HistorySidebar` was the last component still on the legacy aliases, because it had never been
+migrated off the pre-Phase-4 dark theme. Now on canonical tokens, with its dead hover fixed:
+`hover:bg-white/[0.04]` — 4% white, invisible on a cream page — is now `hover:bg-paper-hover`
+at `#F8F7F2`. Its `shadow-2xl`, `bg-black/30` scrim and `text-foreground/90` went too. **No legacy
+alias class remains anywhere in `src/`.**
+
+---
+
+**🔶 A correction to §4.1 of this document.**
+
+The audit said the explanatory notes render at `#B6B8B8`, 1.91:1. They did not. `.text-micro` is
+plain CSS written after `@import "tailwindcss"`, so it sits outside the utilities layer and
+**wins the cascade** over the colour utility on the same element. Measured:
+
+```
+text-micro + text-ink-4  ->  rgb(122,127,136)     i.e. ink-3, not ink-4
+```
+
+So those notes were rendering at **3.85:1**, not 1.91:1. Still below the 4.5 floor, but a
+materially smaller problem than I reported. Twelve of the twenty `ink-4` usages were overridden
+this way; only eight took effect, and of those just three were prose (the search placeholder, the
+sector label, the "· why?" affordance).
+
+The fix is unchanged in shape but better targeted: the real problem was `ink-3` at 3.85:1 carrying
+*every* `.text-micro` note and *every* `.heading-eyebrow` label.
+
+**U4b — done.**
+
+| token | was | now | paper | card | role |
+|---|---|---|---|---|---|
+| `--color-ink-3` | `#7A7F88` | **`#6E727A`** | 4.62:1 | 4.83:1 | lightest tier prose may use |
+| `--color-ink-4` | `#B6B8B8` | **`#909191`** | 3.02:1 | 3.16:1 | **non-text only** — icons, decorative glyphs |
+
+`ink-4` is reclassified rather than merely darkened. Two grey tiers cannot both clear 4.5:1 and
+stay visually distinct, so it keeps a lighter value at the 3:1 floor for meaningful graphics and
+is documented as off-limits for prose; the three places that used it for text now use `ink-3`.
+Rules and dividers already had their own tier (`--color-rule*`), so no decorative text tier was
+needed. The legacy `--color-text-tertiary` / `--color-text-dim` aliases were moved in step.
+
+*Exit check:* **PASS.** Every text token ≥ 4.5:1 on both `#FAFAF7` and `#FFFFFF`; `ink-4` ≥ 3:1;
+`veto-ink` on `sell-soft` 8.71:1. Confirmed in the browser: `.text-micro` and `.heading-eyebrow`
+both render `rgb(110,114,122)`.
+
+**Reduced motion** added. Under `prefers-reduced-motion: reduce` the shimmer and pulse animations
+resolve to `animation-name: none`, transitions collapse, and Framer's inline transitions are
+neutralised by the duration override. Verified both ways — motion returns under `no-preference`,
+so the block is a response to the preference rather than a permanent disable.
+
+#### U4 addendum — the hero's numbers were unreadable to a non-trader
+
+Raised on looking at a real verdict:
+
+```
+— Hold    to ₹841  -16.4%
+Conviction 80%   Stop ₹967 −3.9%   ⚠ Target at or below spot   Size 0.80×
+```
+
+Four problems, and the first is the worst:
+
+1. **It never said what the stock costs today.** Every percentage hung off an invisible anchor.
+   `current_price` was computed inside `reconcile_targets` and thrown away; it is now a field on
+   `GroundedTargets` and reaches the page. Runs cached before that fall back to deriving it from
+   the target and its percentage, which is the exact inverse of how the percentage was computed.
+2. **Trade-desk vocabulary** — "spot", "stop", "conviction" — used without explanation.
+3. **`Size 0.80×` gave no clue what it was 0.8 of.**
+4. **`to ₹841`** reads as a destination, when for a negative target it is the opposite of one.
+
+Replaced with a labelled grid, each figure carrying a sentence saying what it means:
+
+```
+TRADING NOW   PRICE TARGET        STOP LOSS            CONFIDENCE        POSITION SIZE
+₹4,909        ₹3,399              ₹4,756               80%               0.94×
+Today's       30.8% below today   Sell here to cap     How strongly      Smaller than a
+market price. — this target is    the loss · 3.1%      the five          normal position
+Everything    lower than the      below today          analysts agreed   — this stock
+here is       current price                            with this call    moves a lot
+measured
+from it.
+```
+
+And where the target sits below the current price, the contradiction is stated rather than
+compressed into a chip reading "Target at or below spot":
+
+> The price target sits **below** today's price, so there is no gain to aim at here. The stop loss
+> is above the target, which means the stop would trigger first. Treat the target as a valuation
+> estimate, not a destination.
+
+Also captioned the things a reader had to infer: pillar scores now read `6.8/10` rather than a
+bare `6.8`, and Strengths / Risks / Catalysts / Dissent each say in one line what they contain.
+`Reward vs risk 10.3 : 1` now carries "potential gain per unit risked".
+
+The verdict word itself was left exactly as it was.
+
+#### Then the price target was removed entirely
+
+Writing that caveat banner was the tell. When a headline number needs a paragraph explaining why
+it does not mean what it says, the number has already failed.
+
+**The target is a mean of two anchors measured in different units.** `reconcile_targets` averages:
+
+- a **fundamental** anchor — `forward EPS × sector-median P/E`, answering *"is this expensive?"*
+- a **technical** anchor — the median of resistance levels above spot, answering *"where is the
+  next ceiling?"*
+
+Their average is not a worse estimate of either. It is an estimate of nothing; there is no question
+to which it is the answer. And because the fundamental anchor prices every stock at its sector's
+median multiple, it lands far below the market for any premium-multiple company — which is most of
+what this tool rates a Buy.
+
+Titan, measured:
+
+```
+fundamental  1,491.25   <- 50% weight   (spot 4,909 / 3.256; a 225.6% P/E premium to sector)
+technical    5,304.10   <- 50% weight
+analyst      5,421.50   <- discarded by the precedence rule
+llm          5,600.00   <- discarded by the precedence rule
+                 mean = 3,397.68   against a price of 4,909
+```
+
+Three anchors agree within 6%. The one that disagrees by 3× takes half the weight, and the other
+two are dropped entirely whenever fundamental and technical both exist. There is an irony in the
+code: `compute_technical_target` uses a **median** precisely because it is *"robust to one wild
+outlier"* — and then the final reconciliation uses a mean of two, which is the one place the
+outlier actually bites.
+
+**Removed from the UI**, along with everything derived from it: the hero figure, the below-spot
+caveat banner, `Reward vs risk` (a ratio computed from a number no longer stood behind — this is
+where the `-9.6 : 1` came from), and the chart's target line and legend entry. The time horizon was
+preserved as a meta item so it was not lost as collateral. The disclaimer no longer promises a
+price target.
+
+`target` and `upside` are still read in `VerdictHero` — solely to derive `Trading now` on runs
+cached before the backend sent `current_price`. The reason for the absence is recorded at each
+call site so it is not helpfully re-added.
+
+A side effect worth noting: the chart's Y-axis domain no longer has to stretch to include a target
+60% away from spot, so the price action occupies the full plot height instead of being squashed
+into the bottom third.
+
+**Still open:** the backend keeps computing it, so run logs retain it for analysis and nothing was
+lost. Re-introduce the display when `reconcile_targets` stops averaging incompatible anchors —
+take the median of all available anchors, and emit no target at all when their spread is too wide
+to state one. Titan's median of all four is **₹5,363**, above spot and coherent with the verdict.
+
+**Process note, third time this session.** The first U4b verification reported the old colours and
+no reduced-motion block. Both were wrong: the source was correct and the Next dev server was
+serving a `globals.css` chunk that still read `--color-ink-3: #7a7f88`. Turbopack does not reliably
+pick up `@theme` edits. `rm -rf .next/dev` and restart before believing any CSS result.
 
 ---
 

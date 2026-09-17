@@ -160,6 +160,10 @@ class GroundedTargets:
     reward_to_risk: Optional[float]
     method: str
     components: Dict[str, Optional[float]] = field(default_factory=dict)
+    # The price every other number here is measured against. It was computed
+    # and discarded, so the UI could show "16.4% below" without ever showing
+    # what it was below — leaving every figure relative to an invisible anchor.
+    current_price: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -236,4 +240,5 @@ def reconcile_targets(
         reward_to_risk=rr,
         method=method,
         components=components,
+        current_price=round(float(price), 2) if price else None,
     )

@@ -56,19 +56,19 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
-        <div className="bg-white border border-[#E5E3DB] rounded-md px-3 py-2 shadow-md">
-            <p className="text-[11px] text-[#7A7F88] mb-1.5 font-mono">{d.date}</p>
+        <div className="bg-white border border-rule rounded-md px-3 py-2 shadow-md">
+            <p className="text-[11px] text-ink-3 mb-1.5 font-mono">{d.date}</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] font-mono">
-                <span className="text-[#7A7F88]">O</span>
-                <span className="text-[#1A1B1E] text-right tabular">₹{d.open?.toFixed(2)}</span>
-                <span className="text-[#7A7F88]">H</span>
-                <span className="text-[#1A1B1E] text-right tabular">₹{d.high?.toFixed(2)}</span>
-                <span className="text-[#7A7F88]">L</span>
-                <span className="text-[#1A1B1E] text-right tabular">₹{d.low?.toFixed(2)}</span>
-                <span className="text-[#7A7F88]">C</span>
-                <span className="text-[#1A1B1E] text-right tabular">₹{d.close?.toFixed(2)}</span>
-                <span className="text-[#7A7F88]">Vol</span>
-                <span className="text-[#1A1B1E] text-right tabular">{(d.volume / 1e6).toFixed(1)}M</span>
+                <span className="text-ink-3">O</span>
+                <span className="text-ink text-right tabular">₹{d.open?.toFixed(2)}</span>
+                <span className="text-ink-3">H</span>
+                <span className="text-ink text-right tabular">₹{d.high?.toFixed(2)}</span>
+                <span className="text-ink-3">L</span>
+                <span className="text-ink text-right tabular">₹{d.low?.toFixed(2)}</span>
+                <span className="text-ink-3">C</span>
+                <span className="text-ink text-right tabular">₹{d.close?.toFixed(2)}</span>
+                <span className="text-ink-3">Vol</span>
+                <span className="text-ink text-right tabular">{(d.volume / 1e6).toFixed(1)}M</span>
             </div>
         </div>
     );
@@ -131,8 +131,8 @@ export function PriceChart({ ticker, targetPrice = null, stopLoss = null }: Pric
                             key={p.value}
                             onClick={() => setPeriod(p.value)}
                             className={`text-[11px] font-mono px-2 py-1 rounded transition-all cursor-pointer ${period === p.value
-                                ? 'bg-[#1A1B1E] text-white'
-                                : 'text-[#7A7F88] hover:text-[#1A1B1E] hover:bg-[#F2F1EB]'
+                                ? 'bg-ink text-white'
+                                : 'text-ink-3 hover:text-ink hover:bg-paper-2'
                                 }`}
                         >
                             {p.label}
@@ -143,19 +143,19 @@ export function PriceChart({ ticker, targetPrice = null, stopLoss = null }: Pric
 
             {/* Legend */}
             <div className="flex items-center gap-4 px-4 pb-2">
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#7A7F88]">
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-ink-3">
                     <span className="w-4 h-[2px]" style={{ background: COLORS.sma20 }} /> SMA20
                 </span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#7A7F88]">
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-ink-3">
                     <span className="w-4 h-[2px]" style={{ background: COLORS.sma50 }} /> SMA50
                 </span>
                 {targetPrice && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#15803D]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-buy">
                         <span className="w-4 h-[1px] border-t border-dashed" style={{ borderColor: COLORS.target }} /> Target {inr(targetPrice)}
                     </span>
                 )}
                 {stopLoss && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#B91C1C]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-sell">
                         <span className="w-4 h-[1px] border-t border-dashed" style={{ borderColor: COLORS.stop }} /> Stop {inr(stopLoss)}
                     </span>
                 )}
@@ -166,15 +166,15 @@ export function PriceChart({ ticker, targetPrice = null, stopLoss = null }: Pric
                 {loading ? (
                     <div className="w-full h-full flex items-center justify-center">
                         <div className="flex gap-1">
-                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#1E40AF]" />
-                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#1E40AF]" />
-                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-[#1E40AF]" />
+                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent" />
+                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent" />
+                            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent" />
                         </div>
                     </div>
                 ) : (error || data.length === 0) ? (
                     <div className="w-full h-full flex flex-col items-center justify-center text-center px-6">
-                        <p className="text-small text-[#7A7F88] mb-1">Price chart unavailable</p>
-                        <p className="text-micro text-[#B6B8B8] max-w-sm">
+                        <p className="text-small text-ink-3 mb-1">Price chart unavailable</p>
+                        <p className="text-micro text-ink-4 max-w-sm">
                             {error ?? 'No data returned for the selected period.'}
                         </p>
                     </div>
