@@ -7,11 +7,11 @@ import { loadHistory, type HistoryItem, type Verdict } from '@/hooks/useAnalysis
 import Link from 'next/link';
 
 const DECISION_CONFIG: Record<Verdict, { color: string; icon: typeof ArrowUp; bg: string; text: string }> = {
-    STRONG_BUY: { color: '#166534', icon: ChevronsUp,   bg: 'bg-[#DCFCE7]', text: 'text-[#166534]' },
-    BUY:        { color: '#15803D', icon: ArrowUp,      bg: 'bg-[#ECFDF3]', text: 'text-[#15803D]' },
-    HOLD:       { color: '#A16207', icon: Minus,        bg: 'bg-[#FEF7E0]', text: 'text-[#A16207]' },
-    SELL:       { color: '#B91C1C', icon: ArrowDown,    bg: 'bg-[#FEE7E7]', text: 'text-[#B91C1C]' },
-    STRONG_SELL:{ color: '#991B1B', icon: ChevronsDown, bg: 'bg-[#FCD7D7]', text: 'text-[#991B1B]' },
+    STRONG_BUY: { color: '#166534', icon: ChevronsUp,   bg: 'bg-strong-buy-soft', text: 'text-strong-buy' },
+    BUY:        { color: '#15803D', icon: ArrowUp,      bg: 'bg-buy-soft', text: 'text-buy' },
+    HOLD:       { color: '#A16207', icon: Minus,        bg: 'bg-hold-soft', text: 'text-hold' },
+    SELL:       { color: '#B91C1C', icon: ArrowDown,    bg: 'bg-sell-soft', text: 'text-sell' },
+    STRONG_SELL:{ color: '#991B1B', icon: ChevronsDown, bg: 'bg-strong-sell-soft', text: 'text-strong-sell' },
 };
 
 function formatRelativeTime(iso: string): string {
@@ -51,17 +51,17 @@ export function HistorySidebar() {
             {/* Toggle Tab */}
             <button
                 onClick={() => setIsOpen((v) => !v)}
-                className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-surface border border-border border-l-0 rounded-r-xl px-2 py-4 flex flex-col items-center gap-2 text-text-muted hover:text-primary hover:border-primary/40 transition-all cursor-pointer group"
+                className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-card border border-rule border-l-0 rounded-r-xl px-2 py-4 flex flex-col items-center gap-2 text-ink-2 hover:text-accent hover:border-accent/40 transition-all cursor-pointer group"
                 aria-label="Toggle history sidebar"
             >
-                <History size={16} className="group-hover:text-primary transition-colors" />
+                <History size={16} className="group-hover:text-accent transition-colors" />
                 {isOpen ? (
-                    <ChevronLeft size={12} className="text-text-dim" />
+                    <ChevronLeft size={12} className="text-ink-3" />
                 ) : (
-                    <ChevronRight size={12} className="text-text-dim" />
+                    <ChevronRight size={12} className="text-ink-3" />
                 )}
                 {history.length > 0 && (
-                    <span className="text-[9px] font-mono text-text-dim">{history.length}</span>
+                    <span className="text-[9px] font-mono text-ink-3">{history.length}</span>
                 )}
             </button>
 
@@ -73,20 +73,20 @@ export function HistorySidebar() {
                         animate={{ x: 0 }}
                         exit={{ x: '-100%' }}
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                        className="fixed left-0 top-0 h-full z-40 w-64 bg-background/95 backdrop-blur-xl border-r border-border flex flex-col shadow-2xl"
+                        className="fixed left-0 top-0 h-full z-40 w-64 bg-paper/95 backdrop-blur-xl border-r border-rule flex flex-col shadow-lg"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-4 py-4 border-b border-border/60">
+                        <div className="flex items-center justify-between px-4 py-4 border-b border-rule">
                             <div className="flex items-center gap-2">
-                                <History size={14} className="text-primary" />
-                                <span className="text-xs font-mono uppercase tracking-widest text-text-muted">
+                                <History size={14} className="text-accent" />
+                                <span className="text-xs font-mono uppercase tracking-widest text-ink-2">
                                     Recent Analyses
                                 </span>
                             </div>
                             {history.length > 0 && (
                                 <button
                                     onClick={clearHistory}
-                                    className="text-text-dim hover:text-danger transition-colors cursor-pointer"
+                                    className="text-ink-3 hover:text-sell transition-colors cursor-pointer"
                                     title="Clear history"
                                 >
                                     <Trash2 size={13} />
@@ -98,8 +98,8 @@ export function HistorySidebar() {
                         <div className="flex-1 overflow-y-auto py-2">
                             {history.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-center px-6">
-                                    <History size={28} className="text-border mb-3" />
-                                    <p className="text-xs text-text-dim leading-relaxed">
+                                    <History size={28} className="text-ink-4 mb-3" />
+                                    <p className="text-xs text-ink-3 leading-relaxed">
                                         Your recent analyses will appear here.
                                     </p>
                                 </div>
@@ -119,7 +119,7 @@ export function HistorySidebar() {
                                                 <Link
                                                     href={`/analyze/${encodeURIComponent(item.ticker)}`}
                                                     onClick={() => setIsOpen(false)}
-                                                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/[0.04] transition-colors group"
+                                                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-paper-hover transition-colors group"
                                                 >
                                                     {/* Decision badge */}
                                                     {conf ? (
@@ -129,14 +129,14 @@ export function HistorySidebar() {
                                                             <Icon size={12} style={{ color: conf.color }} />
                                                         </div>
                                                     ) : (
-                                                        <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 bg-border/30">
-                                                            <Minus size={12} className="text-text-dim" />
+                                                        <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 bg-paper-2">
+                                                            <Minus size={12} className="text-ink-3" />
                                                         </div>
                                                     )}
 
                                                     {/* Ticker + meta */}
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-semibold text-foreground/90 truncate group-hover:text-primary transition-colors">
+                                                        <p className="text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors">
                                                             {item.ticker}
                                                         </p>
                                                         <div className="flex items-center gap-1.5">
@@ -148,7 +148,7 @@ export function HistorySidebar() {
                                                                 </span>
                                                             )}
                                                             {item.confidence_score !== null && (
-                                                                <span className="text-[9px] text-text-dim font-mono">
+                                                                <span className="text-[9px] text-ink-3 font-mono">
                                                                     {/* Wire format is 0..1; defend against legacy entries by clamping. */}
                                                                     {Math.round(Math.max(0, Math.min(1, item.confidence_score)) * 100)}%
                                                                 </span>
@@ -157,7 +157,7 @@ export function HistorySidebar() {
                                                     </div>
 
                                                     {/* Relative time */}
-                                                    <span className="text-[9px] text-text-dim font-mono flex-shrink-0">
+                                                    <span className="text-[9px] text-ink-3 font-mono flex-shrink-0">
                                                         {formatRelativeTime(item.timestamp)}
                                                     </span>
                                                 </Link>
@@ -169,8 +169,8 @@ export function HistorySidebar() {
                         </div>
 
                         {/* Footer */}
-                        <div className="px-4 py-3 border-t border-border/60">
-                            <p className="text-[9px] text-text-dim font-mono text-center">
+                        <div className="px-4 py-3 border-t border-rule">
+                            <p className="text-[9px] text-ink-3 font-mono text-center">
                                 Max {10} analyses stored locally
                             </p>
                         </div>
@@ -186,7 +186,7 @@ export function HistorySidebar() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => setIsOpen(false)}
-                        className="fixed inset-0 z-30 bg-black/30 backdrop-blur-sm lg:hidden"
+                        className="fixed inset-0 z-30 bg-ink/20 backdrop-blur-sm lg:hidden"
                     />
                 )}
             </AnimatePresence>

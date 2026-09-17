@@ -8,11 +8,11 @@ import { loadHistory, type HistoryItem } from '@/hooks/useAnalysis';
 import { relativeTime } from '@/lib/format';
 
 const VERDICT_TONE: Record<string, string> = {
-    STRONG_BUY:  'text-[#166534]',
-    BUY:         'text-[#15803D]',
-    HOLD:        'text-[#A16207]',
-    SELL:        'text-[#B91C1C]',
-    STRONG_SELL: 'text-[#991B1B]',
+    STRONG_BUY:  'text-strong-buy',
+    BUY:         'text-buy',
+    HOLD:        'text-hold',
+    SELL:        'text-sell',
+    STRONG_SELL: 'text-strong-sell',
 };
 
 export function Watchlist() {
@@ -54,18 +54,18 @@ export function Watchlist() {
                 <h2 className="heading-eyebrow">Your watchlist</h2>
                 <span className="text-micro">{entries.length} {entries.length === 1 ? 'stock' : 'stocks'}</span>
             </div>
-            <ul className="card-paper divide-y divide-[#EFEDE5]">
+            <ul className="card-paper divide-y divide-rule-soft">
                 {entries.map((e) => {
                     const last = lastVerdictFor(e.name);
-                    const tone = last?.decision ? VERDICT_TONE[last.decision] : 'text-[#7A7F88]';
+                    const tone = last?.decision ? VERDICT_TONE[last.decision] : 'text-ink-3';
                     return (
                         <li key={e.name} className="flex items-center gap-3 px-4 py-3 group">
-                            <Bookmark size={14} className="text-[#1E40AF] shrink-0" />
+                            <Bookmark size={14} className="text-accent shrink-0" />
                             <Link
                                 href={`/analyze/${encodeURIComponent(e.name)}`}
-                                className="flex-1 flex items-baseline gap-3 min-w-0 hover:text-[#1E40AF] transition-colors"
+                                className="flex-1 flex items-baseline gap-3 min-w-0 hover:text-accent transition-colors"
                             >
-                                <span className="font-serif text-[15px] font-medium text-[#1A1B1E] truncate">
+                                <span className="font-serif text-[15px] font-medium text-ink truncate">
                                     {e.name}
                                 </span>
                                 {last?.decision && (
@@ -84,12 +84,12 @@ export function Watchlist() {
                                 {!last && (
                                     <span className="text-micro ml-auto italic">never analysed</span>
                                 )}
-                                <ArrowUpRight size={14} className="text-[#B6B8B8] group-hover:text-[#1E40AF] transition shrink-0" />
+                                <ArrowUpRight size={14} className="text-ink-4 group-hover:text-accent transition shrink-0" />
                             </Link>
                             <button
                                 onClick={() => handleRemove(e.name)}
                                 aria-label={`Remove ${e.name} from watchlist`}
-                                className="text-[#B6B8B8] hover:text-[#B91C1C] transition shrink-0 cursor-pointer"
+                                className="text-ink-4 hover:text-sell transition shrink-0 cursor-pointer"
                             >
                                 <X size={14} />
                             </button>

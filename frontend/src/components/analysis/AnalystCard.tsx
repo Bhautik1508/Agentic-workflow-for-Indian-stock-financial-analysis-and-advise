@@ -43,9 +43,9 @@ function scoreColor(score: number): string {
 
 function signalDot(signal: string): string {
     switch (signal) {
-        case 'positive': return 'bg-[#15803D]';
-        case 'negative': return 'bg-[#B91C1C]';
-        default:         return 'bg-[#B6B8B8]';
+        case 'positive': return 'bg-buy';
+        case 'negative': return 'bg-sell';
+        default:         return 'bg-ink-4';
     }
 }
 
@@ -78,13 +78,13 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
             <button
                 onClick={() => canExpand && setExpanded(v => !v)}
                 disabled={!canExpand}
-                className={`w-full flex items-center gap-4 px-5 py-4 text-left ${canExpand ? 'cursor-pointer hover:bg-[#F8F7F2]' : ''} transition-colors`}
+                className={`w-full flex items-center gap-4 px-5 py-4 text-left ${canExpand ? 'cursor-pointer hover:bg-paper-hover' : ''} transition-colors`}
             >
                 <AnalystMonogram name={report.agent_name} />
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-3">
-                        <h3 className="font-serif text-[18px] font-semibold text-[#1A1B1E] leading-tight">
+                        <h3 className="font-serif text-[18px] font-semibold text-ink leading-tight">
                             {shortName(report.agent_name)}
                         </h3>
                         {!isRunning && !isDegraded && (
@@ -96,26 +96,26 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                             </span>
                         )}
                         {isDegraded && (
-                            <span className="text-micro text-[#7A7F88] shrink-0">n/a</span>
+                            <span className="text-micro text-ink-3 shrink-0">n/a</span>
                         )}
                     </div>
                     <div className="mt-1">
                         {isRunning ? (
                             <div className="flex items-center gap-1.5">
-                                <span className="pulse-dot w-1 h-1 rounded-full bg-[#7A7F88]" />
-                                <span className="pulse-dot w-1 h-1 rounded-full bg-[#7A7F88]" />
-                                <span className="pulse-dot w-1 h-1 rounded-full bg-[#7A7F88]" />
-                                <span className="text-small text-[#7A7F88] ml-2">Reasoning…</span>
+                                <span className="pulse-dot w-1 h-1 rounded-full bg-ink-3" />
+                                <span className="pulse-dot w-1 h-1 rounded-full bg-ink-3" />
+                                <span className="pulse-dot w-1 h-1 rounded-full bg-ink-3" />
+                                <span className="text-small text-ink-3 ml-2">Reasoning…</span>
                             </div>
                         ) : isDegraded ? (
-                            <p className="text-small text-[#7A7F88]">
+                            <p className="text-small text-ink-3">
                                 {report.notRun
                                     ? 'Not run — the analysis stopped first'
                                     : 'Excluded — data unavailable'}
-                                {hasError && <span className="text-[#B6B8B8]"> · why?</span>}
+                                {hasError && <span className="text-ink-3"> · why?</span>}
                             </p>
                         ) : (
-                            <p className="text-small text-[#4A4D55] line-clamp-1">
+                            <p className="text-small text-ink-2 line-clamp-1">
                                 {report.signal_line || report.summary?.slice(0, 90) || '—'}
                             </p>
                         )}
@@ -125,7 +125,7 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                 {canExpand && (
                     <ChevronDown
                         size={16}
-                        className={`text-[#B6B8B8] transition-transform shrink-0 ${expanded ? 'rotate-180' : ''}`}
+                        className={`text-ink-4 transition-transform shrink-0 ${expanded ? 'rotate-180' : ''}`}
                     />
                 )}
             </button>
@@ -141,14 +141,14 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                         transition={{ duration: 0.22, ease: 'easeInOut' }}
                         className="overflow-hidden"
                     >
-                        <div className="px-5 pb-5 pt-1 border-t border-[#E5E3DB]">
+                        <div className="px-5 pb-5 pt-1 border-t border-rule">
                             {isDegraded ? (
                                 <div className="pt-4">
                                     <h4 className="heading-eyebrow mb-2">Why it was excluded</h4>
-                                    <p className="text-small text-[#4A4D55] font-mono break-words">
+                                    <p className="text-small text-ink-2 font-mono break-words">
                                         {report.error}
                                     </p>
-                                    <p className="text-micro text-[#B6B8B8] mt-3">
+                                    <p className="text-micro text-ink-4 mt-3">
                                         This pillar contributed nothing to the verdict — it was not
                                         scored zero, it was left out of the weighting entirely.
                                     </p>
@@ -156,7 +156,7 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                             ) : (
                             <>
                             {report.summary && (
-                                <p className="text-body text-[#4A4D55] mb-5 max-w-prose">
+                                <p className="text-body text-ink-2 mb-5 max-w-prose">
                                     {report.summary}
                                 </p>
                             )}
@@ -166,19 +166,19 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                                 <div className="md:col-span-2">
                                     <h4 className="heading-eyebrow mb-2">Key signals</h4>
                                     {report.data_table && report.data_table.length > 0 ? (
-                                        <ul className="divide-y divide-[#EFEDE5]">
+                                        <ul className="divide-y divide-rule-soft">
                                             {report.data_table.map((row, i) => (
                                                 <li key={i} className="flex items-baseline justify-between py-2">
                                                     <span className="flex items-center gap-2">
                                                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${signalDot(row.signal)}`} />
-                                                        <span className="text-small text-[#4A4D55]">{row.label}</span>
+                                                        <span className="text-small text-ink-2">{row.label}</span>
                                                     </span>
-                                                    <span className="font-tnum text-[14px] text-[#1A1B1E]">{row.value}</span>
+                                                    <span className="font-tnum text-[14px] text-ink">{row.value}</span>
                                                 </li>
                                             ))}
                                         </ul>
                                     ) : (
-                                        <p className="text-small text-[#B6B8B8]">No signals returned.</p>
+                                        <p className="text-small text-ink-4">No signals returned.</p>
                                     )}
                                 </div>
 
@@ -189,8 +189,8 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                                             <h4 className="heading-eyebrow mb-2">Findings</h4>
                                             <ul className="space-y-1.5">
                                                 {report.key_findings.slice(0, 3).map((f, i) => (
-                                                    <li key={i} className="text-small text-[#4A4D55] leading-snug">
-                                                        <span className="text-[#15803D] mr-1.5">+</span>{f}
+                                                    <li key={i} className="text-small text-ink-2 leading-snug">
+                                                        <span className="text-buy mr-1.5">+</span>{f}
                                                     </li>
                                                 ))}
                                             </ul>
@@ -201,8 +201,8 @@ export function AnalystCard({ report, index = 0, initialOpen = false }: AnalystC
                                             <h4 className="heading-eyebrow mb-2">Flags</h4>
                                             <ul className="space-y-1.5">
                                                 {report.risk_flags.slice(0, 3).map((f, i) => (
-                                                    <li key={i} className="text-small text-[#4A4D55] leading-snug">
-                                                        <span className="text-[#B91C1C] mr-1.5">−</span>{f}
+                                                    <li key={i} className="text-small text-ink-2 leading-snug">
+                                                        <span className="text-sell mr-1.5">−</span>{f}
                                                     </li>
                                                 ))}
                                             </ul>

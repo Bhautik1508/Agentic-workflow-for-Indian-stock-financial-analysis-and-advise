@@ -134,16 +134,16 @@ export function ComparisonRow({ agents, relative }: ComparisonRowProps) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {cards.map((c, i) => {
                     const arrow = c.direction === 'up' ? '↑' : c.direction === 'down' ? '↓' : '→';
-                    const tone = c.direction === 'up' ? 'text-[#15803D]'
-                              : c.direction === 'down' ? 'text-[#B91C1C]'
-                              : 'text-[#4A4D55]';
+                    const tone = c.direction === 'up' ? 'text-buy'
+                              : c.direction === 'down' ? 'text-sell'
+                              : 'text-ink-2';
                     return (
                         <div key={i} className="card-paper px-4 py-3">
                             <p className="heading-eyebrow text-[10px] mb-1.5">{c.label}</p>
                             <p className={`text-[15px] font-medium capitalize ${tone}`}>
                                 <span className="mr-1.5 opacity-70">{arrow}</span>{c.value}
                             </p>
-                            {c.note && <p className="text-micro text-[#B6B8B8] mt-0.5">{c.note}</p>}
+                            {c.note && <p className="text-micro text-ink-4 mt-0.5">{c.note}</p>}
                         </div>
                     );
                 })}

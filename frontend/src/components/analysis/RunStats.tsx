@@ -60,7 +60,7 @@ export function RunStats({ telemetry }: RunStatsProps) {
         {
             label: 'Served by',
             value: providers.label,
-            tone: providers.warn ? 'text-[#B45309]' : undefined,
+            tone: providers.warn ? 'text-warn' : undefined,
             title: providers.warn
                 ? 'More than one provider answered — the primary tier was failing over'
                 : 'Primary provider served every call',
@@ -85,7 +85,7 @@ export function RunStats({ telemetry }: RunStatsProps) {
                         title={`${telemetry.failed_calls} failed, ${telemetry.fallback_calls} answered by a fallback model`}
                     >
                         <p className="heading-eyebrow text-[10px] mb-1">Retries</p>
-                        <p className="text-[14px] font-medium tabular-nums text-[#B45309]">
+                        <p className="text-[14px] font-medium tabular-nums text-warn">
                             {telemetry.failed_calls} failed · {telemetry.fallback_calls} fell back
                         </p>
                     </div>

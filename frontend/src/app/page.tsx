@@ -35,11 +35,11 @@ export default function Home() {
                 transition={{ duration: 0.5 }}
                 className="flex items-center gap-2 mb-12"
             >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#1E40AF]" />
-                <span className="font-serif text-[16px] font-semibold tracking-tight text-[#1A1B1E]">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                <span className="font-serif text-[16px] font-semibold tracking-tight text-ink">
                     StockSage
                 </span>
-                <span className="text-[10px] font-mono uppercase tracking-widest text-[#7A7F88]">research preview</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-ink-3">research preview</span>
             </motion.div>
 
             {/* Headline */}
@@ -49,9 +49,9 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.05, ease: 'easeOut' }}
                 className="text-center max-w-3xl mx-auto mb-6"
             >
-                <h1 className="font-serif text-[44px] md:text-[64px] leading-[1.05] font-semibold tracking-tight text-[#1A1B1E] mb-5">
+                <h1 className="font-serif text-[44px] md:text-[64px] leading-[1.05] font-semibold tracking-tight text-ink mb-5">
                     Five analysts. <br className="md:hidden" />
-                    <span className="italic text-[#1E40AF]">One verdict.</span>
+                    <span className="italic text-accent">One verdict.</span>
                 </h1>
                 <p className="text-lede max-w-xl mx-auto">
                     Institution-grade Indian equity research, generated from public data and structured
@@ -84,7 +84,7 @@ export default function Home() {
                         // ("HDFC Bank") round-trips through the route param and ends up
                         // double-encoded. SearchBar already navigates by symbol.
                         onClick={() => router.push(`/analyze/${encodeURIComponent(toRouteTicker(s.ticker))}`)}
-                        className="px-2.5 py-1 text-[12px] rounded-full border border-[#E5E3DB] bg-white text-[#4A4D55] hover:border-[#1E40AF]/40 hover:text-[#1E40AF] transition cursor-pointer"
+                        className="px-2.5 py-1 text-[12px] rounded-full border border-rule bg-white text-ink-2 hover:border-accent/40 hover:text-accent transition cursor-pointer"
                     >
                         {s.name}
                     </button>
@@ -110,10 +110,10 @@ export default function Home() {
                         >
                             <div className="flex items-center gap-2">
                                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.colour }} />
-                                <span className="font-serif text-[16px] font-semibold text-[#1A1B1E]">{p.label}</span>
-                                <span className="ml-auto font-mono text-[10px] text-[#B6B8B8]">0{i + 1}</span>
+                                <span className="font-serif text-[16px] font-semibold text-ink">{p.label}</span>
+                                <span className="ml-auto font-mono text-[10px] text-ink-4">0{i + 1}</span>
                             </div>
-                            <p className="text-small text-[#4A4D55]">{p.body}</p>
+                            <p className="text-small text-ink-2">{p.body}</p>
                         </div>
                     ))}
                 </div>

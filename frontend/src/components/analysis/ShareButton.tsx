@@ -45,8 +45,8 @@ export function ShareButton({ runId, disabled }: ShareButtonProps) {
             title={isDisabled ? 'Available once the verdict is complete' : 'Copy a permalink to this verdict'}
             className={`inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-md border transition cursor-pointer
                 ${copied
-                    ? 'border-[#15803D] bg-[#ECFDF3] text-[#15803D]'
-                    : 'border-[#E5E3DB] bg-white text-[#4A4D55] hover:border-[#C6C3B8]'}
+                    ? 'border-buy bg-buy-soft text-buy'
+                    : 'border-rule bg-white text-ink-2 hover:border-rule-strong'}
                 disabled:opacity-50 disabled:cursor-not-allowed`}
         >
             {copied ? <Check size={14} /> : <Link2 size={14} />}

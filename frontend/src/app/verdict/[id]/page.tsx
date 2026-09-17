@@ -124,30 +124,30 @@ export default function FrozenVerdictPage({ params }: { params: Promise<{ id: st
     return (
         <div className="w-full min-h-screen">
             {/* Frozen banner */}
-            <header className="sticky top-0 z-50 w-full bg-[#FAFAF7]/95 backdrop-blur border-b border-[#E5E3DB]">
+            <header className="sticky top-0 z-50 w-full bg-paper/95 backdrop-blur border-b border-rule">
                 <div className="max-w-6xl mx-auto h-14 px-4 md:px-8 flex items-center justify-between">
-                    <Link href="/" className="text-[#7A7F88] hover:text-[#1A1B1E] transition shrink-0" aria-label="Back to home">
+                    <Link href="/" className="text-ink-3 hover:text-ink transition shrink-0" aria-label="Back to home">
                         <ArrowLeft size={16} />
                     </Link>
                     <div className="flex items-baseline gap-3 min-w-0">
-                        <span className="font-serif text-[17px] font-semibold text-[#1A1B1E] truncate">
+                        <span className="font-serif text-[17px] font-semibold text-ink truncate">
                             {data.company_name || data.ticker}
                         </span>
-                        <span className="text-[10px] font-mono tracking-widest text-[#7A7F88] border border-[#E5E3DB] rounded px-1.5 py-0.5 shrink-0">
+                        <span className="text-[10px] font-mono tracking-widest text-ink-3 border border-rule rounded px-1.5 py-0.5 shrink-0">
                             {data.ticker}
                         </span>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] text-[#A16207] font-mono shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-hold font-mono shrink-0">
                         <Lock size={11} /> Frozen {tsLine}
                     </span>
                 </div>
             </header>
 
             <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-10 pb-20">
-                <div className="mb-4 px-3 py-2 rounded-md border border-[#E8C56A] bg-[#FEF7E0] text-small text-[#7A1F1F]/80">
-                    <span className="font-medium text-[#A16207]">Frozen view — </span>
+                <div className="mb-4 px-3 py-2 rounded-md border border-hold-line bg-hold-soft text-small text-veto-ink/80">
+                    <span className="font-medium text-hold">Frozen view — </span>
                     this verdict was generated on {tsLine} and will not be re-run. To get the latest verdict,{' '}
-                    <Link href={`/analyze/${encodeURIComponent(data.company_name || data.ticker)}`} className="underline text-[#1E40AF]">
+                    <Link href={`/analyze/${encodeURIComponent(data.company_name || data.ticker)}`} className="underline text-accent">
                         run a fresh analysis
                     </Link>.
                 </div>
@@ -204,7 +204,7 @@ function ErrorPanel({ error, runId }: { error: string; runId: string }) {
                 <p className="heading-eyebrow mb-3">Verdict unavailable</p>
                 <p className="text-body mb-4">{error}</p>
                 <p className="text-micro mb-6">Run id: <code className="font-mono">{runId}</code></p>
-                <Link href="/" className="inline-block text-[12px] font-medium text-[#1E40AF] underline">Back to home</Link>
+                <Link href="/" className="inline-block text-[12px] font-medium text-accent underline">Back to home</Link>
             </div>
         </div>
     );

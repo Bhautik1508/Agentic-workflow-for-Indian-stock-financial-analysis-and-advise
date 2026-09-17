@@ -77,36 +77,36 @@ export function CounterFactualPanel({ counterFactual: cf }: CounterFactualPanelP
             <h2 className="heading-eyebrow mb-3">What would change this verdict?</h2>
             <div className="card-paper p-5 md:p-6">
                 {/* ── How close is the call ── */}
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-small text-[#4A4D55]">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-small text-ink-2">
                     <span>
-                        <span className="text-[#7A7F88]">Current</span>{' '}
-                        <span className="font-tnum font-medium text-[#1A1B1E]">{cf.current_score.toFixed(2)}</span>{' '}
-                        <span className="text-[#7A7F88]">→</span>{' '}
+                        <span className="text-ink-3">Current</span>{' '}
+                        <span className="font-tnum font-medium text-ink">{cf.current_score.toFixed(2)}</span>{' '}
+                        <span className="text-ink-3">→</span>{' '}
                         <span className="font-medium">{shortBand(cf.current_band)}</span>
                     </span>
                     {hasDowngrade && (
                         <span>
-                            <span className="text-[#7A7F88]">Downgrade to</span>{' '}
-                            <span className="font-medium text-[#B91C1C]">{shortBand(cf.next_worse_band)}</span>{' '}
-                            <span className="text-[#7A7F88]">at</span>{' '}
-                            <span className="font-tnum text-[#B91C1C]">&lt; {cf.score_to_next_worse?.toFixed(2)}</span>
+                            <span className="text-ink-3">Downgrade to</span>{' '}
+                            <span className="font-medium text-sell">{shortBand(cf.next_worse_band)}</span>{' '}
+                            <span className="text-ink-3">at</span>{' '}
+                            <span className="font-tnum text-sell">&lt; {cf.score_to_next_worse?.toFixed(2)}</span>
                         </span>
                     )}
                     {hasUpgrade && (
                         <span>
-                            <span className="text-[#7A7F88]">Upgrade to</span>{' '}
-                            <span className="font-medium text-[#15803D]">{shortBand(cf.next_better_band)}</span>{' '}
-                            <span className="text-[#7A7F88]">at</span>{' '}
-                            <span className="font-tnum text-[#15803D]">≥ {cf.score_to_next_better?.toFixed(2)}</span>
+                            <span className="text-ink-3">Upgrade to</span>{' '}
+                            <span className="font-medium text-buy">{shortBand(cf.next_better_band)}</span>{' '}
+                            <span className="text-ink-3">at</span>{' '}
+                            <span className="font-tnum text-buy">≥ {cf.score_to_next_better?.toFixed(2)}</span>
                         </span>
                     )}
                 </div>
 
                 {buffer != null && (
-                    <p className="text-small text-[#4A4D55] mt-2">
-                        <span className="text-[#7A7F88]">Margin</span>{' '}
-                        <span className="font-tnum font-medium text-[#1A1B1E]">{buffer.toFixed(2)}</span>{' '}
-                        <span className="text-[#7A7F88]">
+                    <p className="text-small text-ink-2 mt-2">
+                        <span className="text-ink-3">Margin</span>{' '}
+                        <span className="font-tnum font-medium text-ink">{buffer.toFixed(2)}</span>{' '}
+                        <span className="text-ink-3">
                             {buffer < 0.5 ? 'points — a marginal call' : 'points before the band changes'}
                         </span>
                     </p>
@@ -114,11 +114,11 @@ export function CounterFactualPanel({ counterFactual: cf }: CounterFactualPanelP
 
                 {/* ── The one line the table was really for ── */}
                 {fragile && fragile.drop_to_downgrade != null && (
-                    <p className="text-small text-[#4A4D55] mt-4 pt-4 border-t border-[#EFEDE5]">
-                        <span className="text-[#7A7F88]">Most fragile pillar:</span>{' '}
-                        <span className="font-medium text-[#1A1B1E]">{fragile.pillar}</span>
+                    <p className="text-small text-ink-2 mt-4 pt-4 border-t border-rule-soft">
+                        <span className="text-ink-3">Most fragile pillar:</span>{' '}
+                        <span className="font-medium text-ink">{fragile.pillar}</span>
                         {' — a '}
-                        <span className="font-tnum text-[#B91C1C]">{fragile.drop_to_downgrade.toFixed(1)}-point</span>
+                        <span className="font-tnum text-sell">{fragile.drop_to_downgrade.toFixed(1)}-point</span>
                         {' fall would downgrade this to '}
                         <span className="font-medium">{shortBand(cf.next_worse_band)}</span>.
                     </p>
@@ -130,7 +130,7 @@ export function CounterFactualPanel({ counterFactual: cf }: CounterFactualPanelP
                         <button
                             onClick={() => setShowPillars(v => !v)}
                             aria-expanded={showPillars}
-                            className="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-[#1E40AF]
+                            className="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-accent
                                 hover:opacity-80 transition cursor-pointer no-print"
                         >
                             {showPillars ? 'Hide' : 'Show'} per-pillar sensitivity
@@ -139,36 +139,36 @@ export function CounterFactualPanel({ counterFactual: cf }: CounterFactualPanelP
 
                         {showPillars && (
                             <div className="mt-3">
-                                <ul className="divide-y divide-[#EFEDE5]">
+                                <ul className="divide-y divide-rule-soft">
                                     {live.map((p) => (
                                         <li key={p.pillar_key} className="py-2.5 grid grid-cols-12 gap-3 items-baseline">
-                                            <span className="col-span-3 md:col-span-2 text-small text-[#1A1B1E] font-medium">
+                                            <span className="col-span-3 md:col-span-2 text-small text-ink font-medium">
                                                 {p.pillar}
                                             </span>
-                                            <span className="col-span-2 md:col-span-2 text-small font-tnum text-[#4A4D55]">
+                                            <span className="col-span-2 md:col-span-2 text-small font-tnum text-ink-2">
                                                 {p.current_score.toFixed(1)}
                                             </span>
                                             {p.drop_to_downgrade != null && p.score_at_downgrade != null ? (
-                                                <span className="col-span-7 md:col-span-4 text-small text-[#4A4D55]">
-                                                    <ArrowDown size={11} className="inline text-[#B91C1C] mr-1" />
-                                                    Drops to <span className="font-tnum text-[#B91C1C]">{p.score_at_downgrade.toFixed(1)}</span>
+                                                <span className="col-span-7 md:col-span-4 text-small text-ink-2">
+                                                    <ArrowDown size={11} className="inline text-sell mr-1" />
+                                                    Drops to <span className="font-tnum text-sell">{p.score_at_downgrade.toFixed(1)}</span>
                                                     {' '}
-                                                    <span className="text-[#7A7F88]">(−{p.drop_to_downgrade.toFixed(1)} pts)</span>
+                                                    <span className="text-ink-3">(−{p.drop_to_downgrade.toFixed(1)} pts)</span>
                                                 </span>
                                             ) : (
-                                                <span className="col-span-7 md:col-span-4 text-micro text-[#B6B8B8]">
+                                                <span className="col-span-7 md:col-span-4 text-micro text-ink-4">
                                                     Cannot downgrade alone
                                                 </span>
                                             )}
                                             {p.rise_to_upgrade != null && p.score_at_upgrade != null ? (
-                                                <span className="col-span-12 md:col-span-4 text-small text-[#4A4D55]">
-                                                    <ArrowUp size={11} className="inline text-[#15803D] mr-1" />
-                                                    Rises to <span className="font-tnum text-[#15803D]">{p.score_at_upgrade.toFixed(1)}</span>
+                                                <span className="col-span-12 md:col-span-4 text-small text-ink-2">
+                                                    <ArrowUp size={11} className="inline text-buy mr-1" />
+                                                    Rises to <span className="font-tnum text-buy">{p.score_at_upgrade.toFixed(1)}</span>
                                                     {' '}
-                                                    <span className="text-[#7A7F88]">(+{p.rise_to_upgrade.toFixed(1)} pts)</span>
+                                                    <span className="text-ink-3">(+{p.rise_to_upgrade.toFixed(1)} pts)</span>
                                                 </span>
                                             ) : (
-                                                <span className="hidden md:inline col-span-4 text-micro text-[#B6B8B8]">
+                                                <span className="hidden md:inline col-span-4 text-micro text-ink-4">
                                                     Cannot upgrade alone
                                                 </span>
                                             )}
@@ -186,12 +186,12 @@ export function CounterFactualPanel({ counterFactual: cf }: CounterFactualPanelP
 
                 {/* ── Structural triggers: observable, and they override the score ── */}
                 {cf.veto_risks.length > 0 && (
-                    <div className="mt-5 pt-4 border-t border-[#EFEDE5]">
+                    <div className="mt-5 pt-4 border-t border-rule-soft">
                         <h3 className="heading-eyebrow mb-2">Structural triggers (override score)</h3>
                         <ul className="space-y-1.5">
                             {cf.veto_risks.map((r, i) => (
-                                <li key={i} className="text-small text-[#4A4D55] flex gap-2 items-start">
-                                    <AlertCircle size={12} className="text-[#A16207] mt-0.5 shrink-0" />
+                                <li key={i} className="text-small text-ink-2 flex gap-2 items-start">
+                                    <AlertCircle size={12} className="text-hold mt-0.5 shrink-0" />
                                     <span>{r}</span>
                                 </li>
                             ))}

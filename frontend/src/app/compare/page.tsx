@@ -12,28 +12,28 @@ const PROFILE_OPTIONS: RiskProfile[] = ['conservative', 'balanced', 'aggressive'
 
 function PillarRow({ label, leftScore, rightScore }: { label: string; leftScore: number | null; rightScore: number | null }) {
     const delta = (leftScore !== null && rightScore !== null) ? leftScore - rightScore : null;
-    const tone = delta == null ? 'text-[#7A7F88]'
-              : delta > 0.5 ? 'text-[#15803D]'
-              : delta < -0.5 ? 'text-[#B91C1C]'
-              : 'text-[#7A7F88]';
+    const tone = delta == null ? 'text-ink-3'
+              : delta > 0.5 ? 'text-buy'
+              : delta < -0.5 ? 'text-sell'
+              : 'text-ink-3';
 
     return (
-        <div className="grid grid-cols-12 gap-2 items-baseline py-2.5 border-b border-[#EFEDE5]">
-            <span className="col-span-4 md:col-span-3 text-small text-[#1A1B1E] font-medium">{label}</span>
-            <span className="col-span-3 md:col-span-3 text-small font-tnum text-[#1A1B1E] text-right">{fmtScore(leftScore)}</span>
+        <div className="grid grid-cols-12 gap-2 items-baseline py-2.5 border-b border-rule-soft">
+            <span className="col-span-4 md:col-span-3 text-small text-ink font-medium">{label}</span>
+            <span className="col-span-3 md:col-span-3 text-small font-tnum text-ink text-right">{fmtScore(leftScore)}</span>
             <span className={`col-span-2 md:col-span-3 text-small font-tnum text-center ${tone}`}>
                 {delta == null ? '—' : (delta >= 0 ? '+' : '') + delta.toFixed(1)}
             </span>
-            <span className="col-span-3 md:col-span-3 text-small font-tnum text-[#1A1B1E] text-right">{fmtScore(rightScore)}</span>
+            <span className="col-span-3 md:col-span-3 text-small font-tnum text-ink text-right">{fmtScore(rightScore)}</span>
         </div>
     );
 }
 
 function VerdictPill({ d }: { d: FinalDecision | null }) {
-    if (!d) return <span className="text-small text-[#7A7F88]">Analysing…</span>;
-    const tone = d.decision.includes('BUY') ? 'text-[#15803D] bg-[#ECFDF3]'
-              : d.decision.includes('SELL') ? 'text-[#B91C1C] bg-[#FEE7E7]'
-              : 'text-[#A16207] bg-[#FEF7E0]';
+    if (!d) return <span className="text-small text-ink-3">Analysing…</span>;
+    const tone = d.decision.includes('BUY') ? 'text-buy bg-buy-soft'
+              : d.decision.includes('SELL') ? 'text-sell bg-sell-soft'
+              : 'text-hold bg-hold-soft';
     const conf = Math.round(Math.max(0, Math.min(1, d.confidence_score ?? 0)) * 100);
     return (
         <div className="flex flex-col gap-1">
@@ -62,10 +62,10 @@ function CompareInner() {
                     <p className="text-body mb-5">
                         Open this page with both tickers in the URL — for example:
                     </p>
-                    <code className="block text-small text-[#1E40AF] font-mono mb-4">
+                    <code className="block text-small text-accent font-mono mb-4">
                         /compare?left=Reliance&amp;right=ONGC
                     </code>
-                    <Link href="/" className="text-[12px] font-medium text-[#1E40AF] underline">Back to home</Link>
+                    <Link href="/" className="text-[12px] font-medium text-accent underline">Back to home</Link>
                 </div>
             </div>
         );
@@ -76,12 +76,12 @@ function CompareInner() {
 
     return (
         <div className="w-full min-h-screen">
-            <header className="sticky top-0 z-50 w-full bg-[#FAFAF7]/95 backdrop-blur border-b border-[#E5E3DB]">
+            <header className="sticky top-0 z-50 w-full bg-paper/95 backdrop-blur border-b border-rule">
                 <div className="max-w-6xl mx-auto h-14 px-4 md:px-8 flex items-center justify-between gap-4">
-                    <Link href="/" className="text-[#7A7F88] hover:text-[#1A1B1E] transition shrink-0" aria-label="Back to home">
+                    <Link href="/" className="text-ink-3 hover:text-ink transition shrink-0" aria-label="Back to home">
                         <ArrowLeft size={16} />
                     </Link>
-                    <span className="font-serif text-[16px] font-semibold text-[#1A1B1E]">Compare</span>
+                    <span className="font-serif text-[16px] font-semibold text-ink">Compare</span>
                     <div className="flex items-center gap-1">
                         {PROFILE_OPTIONS.map(p => (
                             <button
@@ -90,8 +90,8 @@ function CompareInner() {
                                 disabled={leftState.status === 'analyzing' || rightState.status === 'analyzing'}
                                 className={`text-[11px] font-medium px-2 py-1 rounded border transition cursor-pointer
                                     ${profile === p
-                                        ? 'border-[#1E40AF] bg-[#F0F4FB] text-[#1E40AF]'
-                                        : 'border-[#E5E3DB] bg-white text-[#4A4D55]'}
+                                        ? 'border-accent bg-accent-tint text-accent'
+                                        : 'border-rule bg-white text-ink-2'}
                                     disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
                                 {p}
@@ -120,7 +120,7 @@ function CompareInner() {
                 <section>
                     <h2 className="heading-eyebrow mb-3">Pillar by pillar</h2>
                     <div className="card-paper p-4 md:p-5">
-                        <div className="grid grid-cols-12 gap-2 pb-2 border-b border-[#E5E3DB]">
+                        <div className="grid grid-cols-12 gap-2 pb-2 border-b border-rule">
                             <span className="col-span-4 md:col-span-3 heading-eyebrow">Pillar</span>
                             <span className="col-span-3 md:col-span-3 heading-eyebrow text-right truncate">
                                 {decodeURIComponent(left)}
@@ -146,23 +146,23 @@ function CompareInner() {
                     <h2 className="heading-eyebrow mb-3">Theses</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="card-paper p-5">
-                            <p className="text-lede text-[#1A1B1E]">
+                            <p className="text-lede text-ink">
                                 {leftState.final_decision?.investment_thesis || '—'}
                             </p>
                             <Link
                                 href={`/analyze/${encodeURIComponent(left)}`}
-                                className="mt-4 inline-flex items-center gap-1 text-[12px] font-medium text-[#1E40AF]"
+                                className="mt-4 inline-flex items-center gap-1 text-[12px] font-medium text-accent"
                             >
                                 Open full analysis <ArrowRight size={12} />
                             </Link>
                         </div>
                         <div className="card-paper p-5">
-                            <p className="text-lede text-[#1A1B1E]">
+                            <p className="text-lede text-ink">
                                 {rightState.final_decision?.investment_thesis || '—'}
                             </p>
                             <Link
                                 href={`/analyze/${encodeURIComponent(right)}`}
-                                className="mt-4 inline-flex items-center gap-1 text-[12px] font-medium text-[#1E40AF]"
+                                className="mt-4 inline-flex items-center gap-1 text-[12px] font-medium text-accent"
                             >
                                 Open full analysis <ArrowRight size={12} />
                             </Link>

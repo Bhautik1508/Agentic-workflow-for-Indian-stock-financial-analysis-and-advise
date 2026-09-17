@@ -27,8 +27,8 @@ export function WatchToggle({ name }: WatchToggleProps) {
             title={watched ? 'Remove from watchlist' : 'Add to watchlist'}
             className={`inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-md border transition cursor-pointer
                 ${watched
-                    ? 'border-[#1E40AF] bg-[#F0F4FB] text-[#1E40AF]'
-                    : 'border-[#E5E3DB] bg-white text-[#4A4D55] hover:border-[#C6C3B8]'}`}
+                    ? 'border-accent bg-accent-tint text-accent'
+                    : 'border-rule bg-white text-ink-2 hover:border-rule-strong'}`}
         >
             {watched ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
             {watched ? 'Watching' : 'Watch'}

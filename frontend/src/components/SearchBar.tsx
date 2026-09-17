@@ -84,8 +84,8 @@ export default function SearchBar() {
                 transition={{ duration: 0.2 }}
                 className="relative flex items-center bg-white rounded-full overflow-hidden"
             >
-                <div className="pl-5 text-[#7A7F88]">
-                    <Search size={18} className={isFocused ? 'text-[#1E40AF] transition-colors duration-200' : ''} />
+                <div className="pl-5 text-ink-3">
+                    <Search size={18} className={isFocused ? 'text-accent transition-colors duration-200' : ''} />
                 </div>
 
                 <input
@@ -101,12 +101,12 @@ export default function SearchBar() {
                     onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                     onKeyDown={handleKeyDown}
                     placeholder="Search any NSE/BSE company — e.g. Reliance, TCS, Lupin"
-                    className="w-full bg-transparent py-4 px-4 text-[15px] text-[#1A1B1E] outline-none placeholder:text-[#B6B8B8]"
+                    className="w-full bg-transparent py-4 px-4 text-[15px] text-ink outline-none placeholder:text-ink-3"
                 />
 
                 <div className="pr-4 flex items-center gap-2">
-                    {isLoading && <Loader2 size={16} className="animate-spin text-[#1E40AF]" />}
-                    <kbd className="hidden sm:inline-flex px-2 py-0.5 text-[10px] font-mono text-[#7A7F88] bg-[#F2F1EB] rounded border border-[#E5E3DB] tracking-wider">
+                    {isLoading && <Loader2 size={16} className="animate-spin text-accent" />}
+                    <kbd className="hidden sm:inline-flex px-2 py-0.5 text-[10px] font-mono text-ink-3 bg-paper-2 rounded border border-rule tracking-wider">
                         ENTER
                     </kbd>
                 </div>
@@ -119,7 +119,7 @@ export default function SearchBar() {
                         initial={{ opacity: 0, y: -5 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -5 }}
-                        className="absolute top-full mt-2 w-full text-center text-[#B91C1C] text-xs font-medium"
+                        className="absolute top-full mt-2 w-full text-center text-sell text-xs font-medium"
                     >
                         {searchError}
                     </motion.div>
@@ -134,11 +134,11 @@ export default function SearchBar() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 6 }}
                         transition={{ duration: 0.18 }}
-                        className="absolute top-full mt-2 w-full bg-white border border-[#E5E3DB] rounded-2xl shadow-lg overflow-hidden"
+                        className="absolute top-full mt-2 w-full bg-white border border-rule rounded-2xl shadow-lg overflow-hidden"
                     >
                         {isLoading && results.length === 0 && (
-                            <div className="flex items-center justify-center gap-2 py-6 text-[#7A7F88] text-sm">
-                                <Loader2 size={14} className="animate-spin text-[#1E40AF]" />
+                            <div className="flex items-center justify-center gap-2 py-6 text-ink-3 text-sm">
+                                <Loader2 size={14} className="animate-spin text-accent" />
                                 Searching…
                             </div>
                         )}
@@ -152,24 +152,24 @@ export default function SearchBar() {
                                 }}
                                 onMouseEnter={() => setHighlightedIndex(idx)}
                                 className={`flex items-center justify-between px-5 py-3 cursor-pointer transition-colors ${highlightedIndex === idx
-                                    ? 'bg-[#F0F4FB]'
-                                    : 'hover:bg-[#FAFAF7]'
+                                    ? 'bg-accent-tint'
+                                    : 'hover:bg-paper'
                                     }`}
                             >
                                 <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-8 h-8 rounded-md bg-[#F0F4FB] flex items-center justify-center flex-shrink-0">
-                                        <TrendingUp size={14} className="text-[#1E40AF]" />
+                                    <div className="w-8 h-8 rounded-md bg-accent-tint flex items-center justify-center flex-shrink-0">
+                                        <TrendingUp size={14} className="text-accent" />
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-[#1A1B1E] font-medium text-sm truncate">
+                                        <p className="text-ink font-medium text-sm truncate">
                                             {result.name}
                                         </p>
                                         <div className="flex items-center gap-2 mt-0.5">
-                                            <span className="text-xs font-mono text-[#7A7F88]">
+                                            <span className="text-xs font-mono text-ink-3">
                                                 {result.ticker}
                                             </span>
                                             {result.sector && (
-                                                <span className="text-[10px] text-[#B6B8B8] truncate max-w-[140px]">
+                                                <span className="text-[10px] text-ink-3 truncate max-w-[140px]">
                                                     {result.sector}
                                                 </span>
                                             )}
@@ -180,8 +180,8 @@ export default function SearchBar() {
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                                     <span
                                         className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${result.exchange === 'NSE'
-                                            ? 'bg-[#F0F4FB] text-[#1E40AF]'
-                                            : 'bg-[#FEF7E0] text-[#A16207]'
+                                            ? 'bg-accent-tint text-accent'
+                                            : 'bg-hold-soft text-hold'
                                             }`}
                                     >
                                         {result.exchange || 'NSE'}
@@ -189,8 +189,8 @@ export default function SearchBar() {
                                     <ArrowRight
                                         size={14}
                                         className={`transition-all duration-200 ${highlightedIndex === idx
-                                            ? 'text-[#1E40AF] translate-x-0.5'
-                                            : 'text-[#B6B8B8]'
+                                            ? 'text-accent translate-x-0.5'
+                                            : 'text-ink-4'
                                             }`}
                                     />
                                 </div>

@@ -80,30 +80,30 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp, cached = false }: 
         ? (cached ? `cached \u00b7 ${timestamp}` : timestamp)
         : (cached ? 'from cache' : null);
     const isPositive = price ? price.change >= 0 : true;
-    const changeColor = isPositive ? 'text-[#15803D]' : 'text-[#B91C1C]';
+    const changeColor = isPositive ? 'text-buy' : 'text-sell';
     const arrow = isPositive ? '▲' : '▼';
 
     return (
-        <header className="sticky top-0 z-50 w-full bg-[#FAFAF7]/95 backdrop-blur-md border-b border-[#E5E3DB]">
+        <header className="sticky top-0 z-50 w-full bg-paper/95 backdrop-blur-md border-b border-rule">
             <div className="max-w-6xl mx-auto h-14 px-4 md:px-8 flex items-center justify-between gap-4">
                 {/* Left: brand + ticker */}
                 <div className="flex items-center gap-4 min-w-0">
                     <Link
                         href="/"
-                        className="text-[#7A7F88] hover:text-[#1A1B1E] transition-colors shrink-0"
+                        className="text-ink-3 hover:text-ink transition-colors shrink-0"
                         aria-label="Back to home"
                     >
                         <ArrowLeft size={16} />
                     </Link>
                     <Link href="/" className="hidden md:flex items-center gap-2 shrink-0">
-                        <span className="font-serif text-[16px] font-semibold tracking-tight text-[#1A1B1E]">StockSage</span>
-                        <span className="w-px h-4 bg-[#E5E3DB]" />
+                        <span className="font-serif text-[16px] font-semibold tracking-tight text-ink">StockSage</span>
+                        <span className="w-px h-4 bg-rule" />
                     </Link>
                     <div className="flex items-baseline gap-2 min-w-0">
-                        <span className="font-serif text-[17px] font-semibold text-[#1A1B1E] truncate">
+                        <span className="font-serif text-[17px] font-semibold text-ink truncate">
                             {decodedTicker}
                         </span>
-                        <span className="text-[10px] font-mono tracking-widest text-[#7A7F88] border border-[#E5E3DB] rounded px-1.5 py-0.5 shrink-0">
+                        <span className="text-[10px] font-mono tracking-widest text-ink-3 border border-rule rounded px-1.5 py-0.5 shrink-0">
                             {exchange}
                         </span>
                     </div>
@@ -113,7 +113,7 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp, cached = false }: 
                 <div className="flex items-center gap-4 shrink-0">
                     {price && (
                         <div className="flex items-baseline gap-2">
-                            <span className="font-tnum text-[15px] font-medium text-[#1A1B1E]">
+                            <span className="font-tnum text-[15px] font-medium text-ink">
                                 {inr(price.current_price, { fractionDigits: 2 })}
                             </span>
                             <span className={`font-tnum text-[12px] ${changeColor}`}>
@@ -123,9 +123,9 @@ export function TopBar({ ticker, exchange = 'NSE', timestamp, cached = false }: 
                     )}
                     {stamp && (
                         <>
-                            <div className="hidden md:block w-px h-4 bg-[#E5E3DB]" />
+                            <div className="hidden md:block w-px h-4 bg-rule" />
                             <span
-                                className="hidden md:inline text-[11px] font-mono text-[#7A7F88]"
+                                className="hidden md:inline text-[11px] font-mono text-ink-3"
                                 title={cached
                                     ? 'Replayed from cache — not re-run just now'
                                     : 'When this verdict was produced'}

@@ -41,18 +41,18 @@ export function ScoreBreakdown({ agents, status, onJumpToAnalyst }: ScoreBreakdo
                                 className={`group text-left transition-colors ${(!isLoading && !isDegraded && !notRun) ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
                             >
                                 <div className="flex items-baseline justify-between mb-1.5">
-                                    <span className="text-small text-[#4A4D55]">{label}</span>
+                                    <span className="text-small text-ink-2">{label}</span>
                                     {isLoading || notRun ? (
-                                        <span className="text-micro text-[#B6B8B8]">—</span>
+                                        <span className="text-micro text-ink-4">—</span>
                                     ) : isDegraded ? (
-                                        <span className="text-micro text-[#7A7F88]">n/a</span>
+                                        <span className="text-micro text-ink-3">n/a</span>
                                     ) : (
                                         <span className="font-tnum text-[15px] font-semibold" style={{ color: scoreColor(value) }}>
                                             {value.toFixed(1)}
                                         </span>
                                     )}
                                 </div>
-                                <div className="h-1.5 rounded-full bg-[#F2F1EB] overflow-hidden">
+                                <div className="h-1.5 rounded-full bg-paper-2 overflow-hidden">
                                     {!isLoading && !isDegraded && (
                                         <motion.div
                                             initial={{ width: 0 }}
@@ -63,23 +63,23 @@ export function ScoreBreakdown({ agents, status, onJumpToAnalyst }: ScoreBreakdo
                                         />
                                     )}
                                     {isLoading && (
-                                        <div className="h-full rounded-full skeleton-shimmer bg-[#EFEDE5]" />
+                                        <div className="h-full rounded-full skeleton-shimmer bg-rule-soft" />
                                     )}
                                 </div>
                                 {r?.signal_line && !isDegraded && (
-                                    <p className="text-micro text-[#7A7F88] mt-1.5 line-clamp-1">{r.signal_line}</p>
+                                    <p className="text-micro text-ink-3 mt-1.5 line-clamp-1">{r.signal_line}</p>
                                 )}
                                 {isDegraded && (
-                                    <p className="text-micro text-[#7A7F88] mt-1.5">Excluded from verdict</p>
+                                    <p className="text-micro text-ink-3 mt-1.5">Excluded from verdict</p>
                                 )}
                                 {notRun && (
-                                    <p className="text-micro text-[#7A7F88] mt-1.5">Not run</p>
+                                    <p className="text-micro text-ink-3 mt-1.5">Not run</p>
                                 )}
                             </button>
                         );
                     })}
                 </div>
-                <p className="text-micro text-[#B6B8B8] mt-4">Click a pillar to jump to its full reasoning.</p>
+                <p className="text-micro text-ink-4 mt-4">Click a pillar to jump to its full reasoning.</p>
             </div>
         </section>
     );

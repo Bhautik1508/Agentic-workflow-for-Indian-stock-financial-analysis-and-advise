@@ -11,14 +11,14 @@ function Stat({ label, value, note, tone }: {
     label: string; value: string; note?: string; tone?: 'good' | 'bad' | 'neutral';
 }) {
     const colour =
-        tone === 'good' ? 'text-[#15803D]' :
-        tone === 'bad' ? 'text-[#B91C1C]' :
-        'text-[#1A1B1E]';
+        tone === 'good' ? 'text-buy' :
+        tone === 'bad' ? 'text-sell' :
+        'text-ink';
     return (
         <div className="min-w-0">
             <p className="heading-eyebrow text-[10px] mb-1">{label}</p>
             <p className={`text-[15px] font-medium tabular-nums ${colour}`}>{value}</p>
-            {note && <p className="text-micro text-[#B6B8B8] mt-0.5 leading-snug">{note}</p>}
+            {note && <p className="text-micro text-ink-4 mt-0.5 leading-snug">{note}</p>}
         </div>
     );
 }
@@ -84,7 +84,7 @@ export function QualityPanel({ quality, extendedRisk }: QualityPanelProps) {
                         )}
                     </div>
                     {p?.unavailable?.length ? (
-                        <p className="text-micro text-[#B6B8B8] mt-3">
+                        <p className="text-micro text-ink-4 mt-3">
                             Not evaluable from available statements: {p.unavailable.join(', ')}
                         </p>
                     ) : null}
@@ -133,7 +133,7 @@ export function QualityPanel({ quality, extendedRisk }: QualityPanelProps) {
                         )}
                     </div>
                     {extendedRisk?.calmar_ratio != null && (
-                        <p className="text-micro text-[#B6B8B8] mt-3">
+                        <p className="text-micro text-ink-4 mt-3">
                             Calmar {extendedRisk.calmar_ratio.toFixed(2)} (1Y return ÷ max drawdown)
                             {extendedRisk.vwap_relative_pct != null && (
                                 <> · {Math.abs(extendedRisk.vwap_relative_pct)}%{' '}

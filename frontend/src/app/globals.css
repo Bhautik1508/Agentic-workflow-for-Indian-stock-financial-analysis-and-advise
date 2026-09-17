@@ -13,12 +13,21 @@
   --color-paper-2:      #F2F1EB;   /* inset / muted surface */
   --color-paper-3:      #E9E7DF;   /* deepest inset */
   --color-card:         #FFFFFF;   /* cards on top of paper */
+  --color-paper-hover:  #F8F7F2;   /* row / card hover on white */
 
   /* ─── Ink (text) ─── */
-  --color-ink:          #1A1B1E;   /* primary text */
-  --color-ink-2:        #4A4D55;   /* secondary */
-  --color-ink-3:        #7A7F88;   /* tertiary / micro */
-  --color-ink-4:        #B6B8B8;   /* disabled / hint */
+  --color-ink:          #1A1B1E;   /* primary text        16.0:1 on paper */
+  --color-ink-2:        #4A4D55;   /* secondary            8.1:1 */
+  --color-ink-3:        #6E727A;   /* tertiary / micro     4.6:1 — the AA floor
+                                      for small text, and the lightest tier any
+                                      prose may use. Was #7A7F88 at 3.85:1,
+                                      which every .text-micro note and every
+                                      .heading-eyebrow label inherited. */
+  --color-ink-4:        #909191;   /* NON-TEXT only        3.0:1 — icons and
+                                      decorative glyphs. Was #B6B8B8 at 1.9:1,
+                                      below even the 3:1 floor for meaningful
+                                      graphics. Do not use for prose: the three
+                                      places that did now use ink-3. */
 
   /* ─── Rules / borders ─── */
   --color-rule:         #E5E3DB;   /* hairline borders */
@@ -43,6 +52,20 @@
   --color-hold-soft:         #FEF7E0;
   --color-sell-soft:         #FEE7E7;
   --color-strong-sell-soft:  #FCD7D7;
+
+  /* Borders for the verdict chips — lighter than the tone, darker than the
+     soft fill. Named so nothing has to hardcode them again. */
+  --color-strong-buy-line:   #86EFAC;
+  --color-buy-line:          #A7E3BF;
+  --color-hold-line:         #E8C56A;
+  --color-sell-line:         #F0A0A0;
+  --color-strong-sell-line:  #E8898E;
+
+  /* Deep red text that sits on --color-sell-soft (veto banner, frozen note). */
+  --color-veto-ink:     #7A1F1F;
+  /* Degraded-but-not-failed: a run served by the fallback tier, a capped
+     confidence. Distinct from --color-sell, which means a verdict. */
+  --color-warn:         #B45309;
 
   /* ─── Score bars ─── */
   --color-score-high: #15803D;
@@ -75,7 +98,7 @@
   --color-accent-glow:      rgba(30, 64, 175, 0.06);
   --color-text-primary:     #1A1B1E;
   --color-text-secondary:   #4A4D55;
-  --color-text-tertiary:    #7A7F88;
+  --color-text-tertiary:    #6E727A;
   --color-text-mono:        #4A4D55;
   --color-signal-buy:       #15803D;
   --color-signal-sell:      #B91C1C;
@@ -87,7 +110,7 @@
   --color-warning:          #A16207;
   --color-danger:           #B91C1C;
   --color-text-muted:       #4A4D55;
-  --color-text-dim:         #7A7F88;
+  --color-text-dim:         #6E727A;
 
   /* ─── Fonts ─── */
   --font-serif:  'Source Serif 4', Georgia, 'Times New Roman', serif;
@@ -259,6 +282,34 @@ body {
   background: linear-gradient(90deg, transparent, rgba(26, 27, 30, 0.06), transparent);
   background-size: 200px 100%;
   animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ─── Reduced motion ───────────────────────────────────────────────────────
+   Everything that moves on its own: the shimmer, the loading dots, the score
+   bars, and Framer Motion's transforms and opacity fades. Framer reads inline
+   styles, so the transition durations are what have to be neutralised.
+   Honoured rather than merely shortened — "prefers none" is a request, not a
+   preference for something quicker. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton-shimmer {
+    animation: none !important;
+    background: var(--color-paper-2) !important;
+  }
+  .pulse-dot {
+    animation: none !important;
+    opacity: 0.55 !important;
+  }
+  .score-bar-fill {
+    transition: none !important;
+  }
 }
 
 /* ─── Selection ─── */
