@@ -9,7 +9,6 @@ import { AnalystCard } from '@/components/analysis/AnalystCard';
 import { VerdictHero } from '@/components/analysis/VerdictHero';
 import { ScoreBreakdown } from '@/components/analysis/ScoreBreakdown';
 import { ComparisonRow } from '@/components/analysis/ComparisonRow';
-import { CounterFactualPanel } from '@/components/analysis/CounterFactualPanel';
 import { Disclaimer } from '@/components/analysis/Disclaimer';
 import { RunStats } from '@/components/analysis/RunStats';
 import { QualityPanel } from '@/components/analysis/QualityPanel';
@@ -138,9 +137,6 @@ export default function AnalyzePage({ params }: { params: Promise<{ ticker: stri
 
                 {/* ─── Score breakdown (always visible) ─── */}
                 <ScoreBreakdown agents={state.agents} status={state.status} onJumpToAnalyst={jumpToAnalyst} />
-
-                {/* ─── What would change this verdict? ─── */}
-                <CounterFactualPanel counterFactual={state.final_decision?.counter_factual} />
 
                 {/* ─── Analyst cards ─── */}
                 <section className="mt-10">

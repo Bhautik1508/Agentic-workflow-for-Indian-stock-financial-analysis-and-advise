@@ -576,7 +576,27 @@ Verify the verification before believing a failure.
 
 ---
 
-#### U3 addendum — the counter-factual panel was too much, once it finally rendered
+#### U3 addendum — the counter-factual panel, collapsed and then removed
+
+**Final state: the section is gone from the UI entirely.** `CounterFactualPanel.tsx` is deleted and
+neither the analyze page nor the permalink renders it.
+
+The collapse below was the first attempt, and it was not enough. Even reduced to a margin line, a
+fragility sentence and the structural triggers, the section asked more of a reader than it gave
+back: it is a paragraph of conditional arithmetic about scores that are themselves model output,
+placed on a page whose job is to deliver one verdict a reader can act on.
+
+**Nothing was wasted.** The LangGraph state-schema fix in U3 is what made `counter_factual` exist
+at all — it had never once been produced — and every run log now carries it. That is where it is
+useful: the backtest can ask how often a verdict sat within 0.1 points of a band edge, which is a
+question about the engine, not something a reader needs at the moment of reading. The
+`CounterFactual` type is retained in `useAnalysis.ts` because it documents that run-log shape, with
+a comment saying plainly that the UI does not render it so it is not mistaken for a U3-style
+parsed-and-dropped defect.
+
+The original reasoning for collapsing rather than deleting follows, for the record.
+
+#### (superseded) the counter-factual panel was too much, once it finally rendered
 
 Making it work exposed that the per-pillar table was the weakest thing on the page:
 

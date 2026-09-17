@@ -8,7 +8,6 @@ import { VerdictHero } from '@/components/analysis/VerdictHero';
 import { ScoreBreakdown } from '@/components/analysis/ScoreBreakdown';
 import { ComparisonRow } from '@/components/analysis/ComparisonRow';
 import { AnalystCard } from '@/components/analysis/AnalystCard';
-import { CounterFactualPanel } from '@/components/analysis/CounterFactualPanel';
 import { QualityPanel } from '@/components/analysis/QualityPanel';
 import { RunStats } from '@/components/analysis/RunStats';
 import { Disclaimer } from '@/components/analysis/Disclaimer';
@@ -100,7 +99,6 @@ export default function FrozenVerdictPage({ params }: { params: Promise<{ id: st
         dissent_summary: judge['dissent_summary'] as string ?? null,
         data_quality: judge['data_quality'] as FinalDecision['data_quality'] ?? null,
         stale_sources: judge['stale_sources'] as string[] ?? null,
-        counter_factual: judge['counter_factual'] as FinalDecision['counter_factual'] ?? null,
     };
 
     // A shared permalink is the one view built for an audience, and it was the
@@ -155,7 +153,6 @@ export default function FrozenVerdictPage({ params }: { params: Promise<{ id: st
                 <VerdictHero decision={decision} agents={agents} status="complete" />
                 <ComparisonRow agents={agents} relative={analytics.relative_context ?? null} />
                 <ScoreBreakdown agents={agents} />
-                <CounterFactualPanel counterFactual={decision.counter_factual} />
 
                 <section className="mt-10">
                     <h2 className="heading-section mb-5">Analyst notes</h2>

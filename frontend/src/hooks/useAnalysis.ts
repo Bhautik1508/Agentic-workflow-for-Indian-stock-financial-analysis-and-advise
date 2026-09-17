@@ -68,6 +68,15 @@ export interface PillarSensitivity {
     rise_to_upgrade: number | null;
 }
 
+/**
+ * Verdict sensitivity: band thresholds, per-pillar fragility, veto triggers.
+ *
+ * Retained because the backend computes it and every run log carries it — the
+ * backtest reads this shape. It is deliberately NOT rendered: the panel that
+ * showed it led with a per-pillar table that was precise about something a
+ * reader cannot observe (nobody watches a "Financial score"), and the section
+ * as a whole asked more of a reader than it gave back. Removed on 2026-09-17.
+ */
 export interface CounterFactual {
     current_band: string;
     current_score: number;
